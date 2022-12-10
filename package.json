@@ -1,0 +1,15 @@
+{
+  "name": "@onildof/knex",
+  "version": "1.0.0",
+  "description": "Knex practice",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "author": "Onildo Luciano Ferraz",
+  "license": "ISC",
+  "dependencies": {
+    "knex": "^2.3.0",
+    "pg": "^8.8.0"
+  }
+}
