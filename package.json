@@ -9,7 +9,12 @@
   "author": "Onildo Luciano Ferraz",
   "license": "ISC",
   "dependencies": {
+    "dotenv": "^16.0.3",
     "knex": "^2.3.0",
     "pg": "^8.8.0"
+  },
+  "devDependencies": {
+    "eslint": "^8.29.0",
+    "prettier": "^2.8.1"
   }
 }
