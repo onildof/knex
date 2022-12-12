@@ -359,3 +359,25 @@ knex.destroy()
 }
 
 migrate()`
+
+# Objection practice
+
+## What is Objection
+
+Objection.js is an ORM for Node.js that likes to call itself a relational query builder (emphasis on 'relational'). We get all the benefits of Knex query building, plus a powerful set of tools for working with relations between tables.
+
+Objection is built on top of Knex.
+
+Objection doesn't meddle with schema creation and migration. That's left to Knex.
+
+## Installation
+
+`npm install objection knex pg`
+
+## Configuration
+
+We've already configured a db client and connection when we created the knex instance. We pass this instance to Objection using
+
+`Model.knex(knex)`
+
+This installs the knex instance globally for all models, even the ones not yet created, because they'll be defined as classes extending Model.

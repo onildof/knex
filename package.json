@@ -11,10 +11,12 @@
   "dependencies": {
     "dotenv": "^16.0.3",
     "knex": "^2.3.0",
+    "objection": "^3.0.1",
     "pg": "^8.8.0"
   },
   "devDependencies": {
     "eslint": "^8.29.0",
+    "eslint-config-prettier": "^8.5.0",
     "prettier": "^2.8.1"
   }
 }
