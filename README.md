@@ -142,3 +142,220 @@ qB.decrement({balance: 100, level: 1})
 #### clone() clones the current query, to be reused in other queries
 
 let clone = qB.clone()
+
+### Where clauses
+
+#### where
+
+qB.where('columnName', 'value') // (key, value) syntax
+qB.where({ columnName: value }) // object syntax
+//two function syntaxes:
+qB.where((builder) =>
+builder.whereIn('id', [1, 11, 15])
+)
+qB.where(function () {
+this.where('id', 1)
+})
+qB.where('columnName', 'like', '%value%') // operator syntax
+
+#### whereNot
+
+qB.whereNot(...)
+qB.whereNot('columnName', 'in', subquery) //WRONG
+qB.where('columnName', 'not in', subquery) //Use the 'not in' operator instead of whereNot function + in operator
+
+#### whereNull, whereNotNull
+
+qB.whereNull('columnName')
+qB.whereNotNull('columnName')
+
+#### whereExists(builder | callback), whereNotExists
+
+qB.whereExists(qB)
+qB.whereExists(function () { this.select()... })
+
+#### whereBetween(columnName, range), whereNotBetween
+
+qB.whereBetween('column', [1,100])
+
+#### whereLike, whereILike
+
+qB.whereLike('email', '%mail%')
+qB.whereILike('email', '%mail%')
+
+### Join methods, OnClauses, HavingClauses, groupBy, orderBy
+
+...
+
+## Interfaces
+
+These interfaces run the built queries
+
+### Promises
+
+The preferred way.
+
+qB.then((rows) => { ... }).catch((error) => { ... })
+
+### Callbacks
+
+qB.asCallback(function (err, rows) { ... })
+
+### toString()
+
+const toStringQuery = knex.select('\*')
+.from('users')
+.where('id', 1)
+.toString();
+
+// Outputs: console.log(toStringQuery);
+// select \* from "users" where "id" = 1
+
+### toSQL(), toSQL().toNative()
+
+knex.select('_')
+.from('users')
+.where(knex.raw('id = ?', [1]))
+.toSQL()
+// Outputs:
+// {
+// bindings: [1],
+// method: 'select',
+// sql: 'select _ from "users" where id = ?',
+// options: undefined,
+// toNative: function () {}
+// }
+
+knex.select('_')
+.from('users')
+.where(knex.raw('id = ?', [1]))
+.toSQL()
+.toNative()
+// Outputs for postgresql dialect:
+// {
+// bindings: [1],
+// sql: 'select _ from "users" where id = $1',
+// }
+
+## The Schema Builder
+
+Begins with knex.schema
+
+### createTable(tableName, callbackThatModifiesTheCreatedTable)
+
+knex.schema.createTable('tableName', function (table) {
+...
+})
+
+### alterTable(tableName, callbackThatModifiesTheTable)
+
+### dropTable(tableName)
+
+## Methods of a table
+
+### dropColumn, dropColumns, renameColumn
+
+### increments(name, options)
+
+Adds an autoincrementing column (a serial in PostgreSQL). By default it'll be a primary key, unless you use options.primaryKey: false or
+
+### integer, text, boolean, datetime
+
+### timestamps(false, true, false)
+
+Adds created_at and updated_at columns using datetime and defaulting to now()
+
+### primary, unique, references, unsigned, notNullable, nullable,
+
+references(tableName.columnName)
+references(columnName).inTable(tableName)
+
+## Migrations
+
+For easy changes to an existing database, and for determining the initial schema as well
+First things first, migrations use a **knexfile.js**, which is created by running:
+
+`knex init`
+
+It'll create a knexfile.js with the configurations. We might as well use that file as a config when importing the knex library.
+
+There's a command line tool:
+
+`npx knex migrate:latest --help`
+
+We might create a new migration using
+
+`npx knex migrate:make migration_name`
+
+Now update the database matching your NODE_ENV by running
+
+`npx knex migrate:latest`
+
+Rolling back the last batch (?) of migrations
+
+`knex migrate:rollback`
+`knex migrate:rollback --all`
+
+To run the next migration that has not yet been run, or undo it
+
+`knex migrate:up`
+`knex migrate:up migration_name`
+`knex migrate:down`
+`knex migrate:down migration_name`
+
+To list both completed and pending migrations:
+
+`knex migrate:list`
+
+## Seed files
+
+Seed files populate the schema we created through migrations.
+
+There's a CLI for them as well.
+
+`knex seed:make seed_name`
+
+The seeds directory can be specified by our knexfile.js for each environment. If it isn't, then the files are created in ./seeds
+
+To run all the seed files in alphabetical order, execute:
+
+`knex seed:run`
+
+To run specific seed files, do:
+
+`knex seed:run --specific=seed-filename.js --specific=another-seed-filename.js`
+
+## Recipes
+
+### Using parentheses with AND operator
+
+SELECT "firstName", "lastName", "status"
+FROM "userInfo"
+WHERE "status" = 'active'
+AND ("firstName" ILIKE '%Ali%' OR "lastName" ILIKE '%Ali%');
+
+queryBuilder
+.where('status', status.uuid)
+.andWhere((qB) => qB
+.where('firstName', 'ilike', `%${q}%`)
+.orWhere('lastName', 'ilike', `%${q}%`)
+)
+
+### Node instance doesn't stop after using knex
+
+Make sure to close knex instance after execution to avoid Node process hanging due to open connections:
+`async function migrate() {
+try {
+await knex.migrate.latest({/**config**/})
+} catch (e) {
+process.exit(1)
+} finally {
+try {
+knex.destroy()
+} catch (e) {
+// ignore
+}
+}
+}
+
+migrate()`
