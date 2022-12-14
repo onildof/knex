@@ -74,7 +74,7 @@ Every query uses the knex object
 
 Either by passing it to a call to knex, or using the from method
 knex('books').select()
-knex.select().from('books')
+knex.from('books').select()
 
 #### column names: select() or column()
 
@@ -381,3 +381,125 @@ We've already configured a db client and connection when we created the knex ins
 `Model.knex(knex)`
 
 This installs the knex instance globally for all models, even the ones not yet created, because they'll be defined as classes extending Model.
+
+## Basic Queries
+
+Essa é a parte mais difícil
+
+All methods return a QueryBuilder instance, which inherits from Knex's QueryBuilder while adding some more methods by Objection.
+
+Objection lets us print the executed query to console by chaining a call to .debug()
+
+### Fetch item by id
+
+We begin by creating a QueryBuilder for User by calling `User.query()`
+
+This is the same as calling `knex('user')` or `knex.from('user')`.
+
+So we set the table for our query and at the same time the class of the to be returned instance, when that query is executed.
+
+Then we chain query building methods, such as `.findById(1)`
+
+Finally we use Knex's Promise interface to execute our formed query: `await` operator or `.then()` method.
+
+Putting it all together:
+
+```
+const user = await User.query().findById(1)
+console.log(user instanceof User) //true. Objection always gives you an instance of a Model
+```
+
+### Fetch all items
+
+```
+const users = await User.query()
+```
+
+### Knex didn't support arrow functions, Objection does
+
+"Where knex requires you to use an old fashioned function an this, with objection you can use arrow functions"
+
+```
+const nonMiddleAgedJennifers = await Person.query()
+  .where(builder => builder.where('age', '<', 40).orWhere('age', '>', 60))
+  .where('firstName', 'Jennifer')
+  .orderBy('lastName');
+```
+
+### Insert
+
+Where in Knex we had:
+
+```
+// returning an array with column values:
+const book = await knex('books').insert({title: 'Dune'}).returning('*')
+const book = await knex.into('books').insert({title: 'Dune'}).returning('*')
+```
+
+in Objection we have:
+
+```
+// returning an instance of Books
+const book = await Books.query().insert({title: 'Dune'}).returning('*')
+```
+
+### Patch, Update
+
+```
+const numUpdated = await Person.query()
+  .where('id', 1234)
+  .patch({
+    firstName: 'Jennifer'
+  })
+
+const jennifer = await Person.query()
+  .where('id', 1234)
+  .patch({ firstName: 'Jenn', lastName: 'Lawrence' })
+  .returning('*')
+```
+
+### Delete
+
+```
+const numDeleted = await Person.query()
+  .where({ firstName: 'Jennifer' })
+  .delete()
+
+const deletedJennifers = await Person.query()
+  .where({ firstName: 'Jennifer' })
+  .delete()
+  .returning('*')
+```
+
+## Relation Queries
+
+This is where the model's relationMappings property gets used by Objection.
+
+The static method relatedQuery() receives just the relationMapping name.
+There's also the instance method $relatedQuery().
+
+Two queries needed for the instance method $relatedQuery():
+
+```
+const person = await Person.query()
+  .findById(1);
+const dogs = await person.$relatedQuery('pets')
+  .where('species', 'dog')
+```
+
+Just one query needed for the static method relatedQuery():
+
+```
+//weird for method ???
+const dogs = await Person.relatedQuery('pets')
+  .for(1)
+  .where('species', 'dog')
+```
+
+With Model.HasManyRelation and Model.BelongsToOneRelation, we might as well just use vanilla Knex to get what we want:
+
+```
+const dags = await Pets.query().where({ ownerId: 1, species: 'dog' })
+```
+
+It's just easier to write and read.
