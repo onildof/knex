@@ -147,16 +147,16 @@ let clone = qB.clone()
 
 #### where
 
+```
 qB.where('columnName', 'value') // (key, value) syntax
 qB.where({ columnName: value }) // object syntax
 //two function syntaxes:
-qB.where((builder) =>
-builder.whereIn('id', [1, 11, 15])
-)
+qB.where((builder) => builder.whereIn('id', [1, 11, 15]))
 qB.where(function () {
-this.where('id', 1)
+  this.where('id', 1)
 })
 qB.where('columnName', 'like', '%value%') // operator syntax
+```
 
 #### whereNot
 
@@ -203,20 +203,21 @@ qB.asCallback(function (err, rows) { ... })
 
 ### toString()
 
-const toStringQuery = knex.select('\*')
-.from('users')
-.where('id', 1)
-.toString();
+```
+const toStringQuery = knex.select('*').from('users').where('id', 1).toString()
 
 // Outputs: console.log(toStringQuery);
 // select \* from "users" where "id" = 1
+```
 
 ### toSQL(), toSQL().toNative()
 
-knex.select('_')
-.from('users')
-.where(knex.raw('id = ?', [1]))
-.toSQL()
+```
+knex
+  .select('_')
+  .from('users')
+  .where(knex.raw('id = ?', [1]))
+  .toSQL()
 // Outputs:
 // {
 // bindings: [1],
@@ -226,16 +227,18 @@ knex.select('_')
 // toNative: function () {}
 // }
 
-knex.select('_')
-.from('users')
-.where(knex.raw('id = ?', [1]))
-.toSQL()
-.toNative()
+knex
+  .select('_')
+  .from('users')
+  .where(knex.raw('id = ?', [1]))
+  .toSQL()
+  .toNative()
 // Outputs for postgresql dialect:
 // {
 // bindings: [1],
 // sql: 'select _ from "users" where id = $1',
 // }
+```
 
 ## The Schema Builder
 
@@ -329,36 +332,44 @@ To run specific seed files, do:
 
 ### Using parentheses with AND operator
 
+```
 SELECT "firstName", "lastName", "status"
-FROM "userInfo"
-WHERE "status" = 'active'
-AND ("firstName" ILIKE '%Ali%' OR "lastName" ILIKE '%Ali%');
+  FROM "userInfo"
+  WHERE "status" = 'active'
+  AND ("firstName" ILIKE '%Ali%' OR "lastName" ILIKE '%Ali%');
 
 queryBuilder
-.where('status', status.uuid)
-.andWhere((qB) => qB
-.where('firstName', 'ilike', `%${q}%`)
-.orWhere('lastName', 'ilike', `%${q}%`)
-)
+  .where('status', status.uuid)
+  .andWhere((qB) =>
+    qB
+      .where('firstName', 'ilike', `%${q}%`)
+      .orWhere('lastName', 'ilike', `%${q}%`)
+  )
+```
 
 ### Node instance doesn't stop after using knex
 
 Make sure to close knex instance after execution to avoid Node process hanging due to open connections:
-`async function migrate() {
-try {
-await knex.migrate.latest({/**config**/})
-} catch (e) {
-process.exit(1)
-} finally {
-try {
-knex.destroy()
-} catch (e) {
-// ignore
-}
-}
-}
 
-migrate()`
+```
+async function migrate() {
+  try {
+    await knex.migrate.latest({
+      /**config**/
+    })
+  } catch (e) {
+    process.exit(1)
+  } finally {
+    try {
+      knex.destroy()
+    } catch (e) {
+      // ignore
+    }
+  }
+}
+```
+
+migrate()
 
 # Objection practice
 
@@ -381,3 +392,100 @@ We've already configured a db client and connection when we created the knex ins
 `Model.knex(knex)`
 
 This installs the knex instance globally for all models, even the ones not yet created, because they'll be defined as classes extending Model.
+
+## Models
+
+A Model subclass can define relationships to other models using the static getter property relationMappings
+
+```
+class Student extends Model {
+  static get tableName() {
+    return 'student'
+  }
+
+  static get relationMappings() {
+    const Attendance = require('./Attendance') //another model
+    return {
+      attendance: {
+        relation: Model.hasManyRelation,
+        modelClass: Attendance,
+        join: {
+          from: 'student.id',
+          to: 'attendance.studentId'
+        }
+      }
+    }
+  }
+}
+```
+
+Models can optionally define a jsonSchema for input validation.
+Each instance of a class represents a table row.
+Each Model subclass inherits an idColumn property with value 'id'. You'll need to explicitly override it if your table differs in its primary key.
+Objection has no global configuration or state. There's no Objection instance. Everything is done through Model subclasses.
+Most of the time our models will share a similar configuration, which invites us to create a BaseModel class and inherit all our models from that.
+
+Objection considers database schema to be a separate concern which should be dealt with using knex migrations only.
+
+```
+class Student extends Model {
+  ...
+
+  // instance methods can be defined at your convenience. It's a class afterall
+  fullName() {
+    return this.firstName + ' ' + this.lastName
+  }
+
+  // Whenever a model instance is created, be it explicitly or implicitly, it is checked against this schema (it is optional). http://json-schema.org has more details
+  static get jsonSchema() {
+    return {
+      type: 'object',
+      required: ['firstName', 'lastName'],
+      properties: {
+        id: { type: 'integer' },
+        parentId: { type: ['integer', 'null'] },
+        firstName: { type: 'text' },
+        lastName: { type: 'text' },
+        age: { type: 'integer' }
+      }
+    }
+  }
+
+  static get relationMappings() {
+    const Parent = require('./Parent')
+    const Classe = require('./Classe')
+    return {
+      // Example of a many-to-many relation
+      parents: {
+        relation: Model.ManyToManyRelation,
+        modelClass: Parent,
+        join: {
+          from: 'student.id'
+          through: {
+            from: 'student_parent.studentId',
+            to: 'student_parent.parendId'
+          }
+          to: 'parent.id'
+        }
+      },
+      // Example of a belongs-to-one relation
+      classe: {
+        relation: Model.BelongsToOneRelation,
+        modelClass: Classe,
+        join: {
+          from: 'student.classeId',
+          to: 'classe.id'
+        }
+      }
+    }
+  }
+}
+```
+
+## Relations
+
+Beware of require loops (aka circular dependencies, circular requires). These are very common when defining relations.
+Whenever a module A requires a module B, which synchronously requires module A, a require loop is created, which node.js and objection cannot solve automatically.
+So Objection throws an error.
+
+One technique to prevent this is to take advantage of the lazy access of relationMappings. This getter property is only accessed when an executing query needs it. Therefore we require our models inside of it.
