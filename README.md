@@ -611,3 +611,347 @@ const dags = await Pets.query().where({ ownerId: 1, species: 'dog' })
 ```
 
 It's just easier to write and read.
+
+## Eager Loading
+
+If we wanted both a Person instance and their Pet instances, we'd do two queries:
+
+```
+const person = await Person.query().where('id', 1)
+const pets = await person.$relatedQuery('pets')
+```
+
+Now Objection offers some methods for us to do the same in one query, and have the pets as a property of person. They call it Eager Loading for fetching a "graph of relations". They "load the relations eagerly".
+
+The methods are QueryBuilder.withGraphFetched() and QueryBuilder.withGraphJoined(). While Model.relatedQuery() takes a relation name as its argument, QueryBuilder.withGraphFetched() and QueryBuilder.withGraphJoined() take a relation -expression-.
+
+### allowGraph
+
+The relation expression can be limited by what's passed to a call to QueryBuilder.allowGraph(). If it's not a subset, then an error is thrown by withGraphFetched or withGraphJoined (and the query is rejected).
+
+### withGraphFetched
+
+withGraphJoined does multiple joins and then performs one single query over the joined tables to fetch the whole relation graph. withGraphFetched performs one query per level in the relation expression tree. For example, the expression children.children will make the method perform two additional queries.
+
+withGraphFetched is the recommended choice.
+
+```
+const person = await Person.query().where('id', 1).withGraphFetched('pets')
+console.log(person.pets[0].name)
+```
+
+Multiple relations on multiple levels can be eagerly loaded with withGraphFetched:
+
+```
+const people = await Person.query().withGraphFetched('[pets, children.[pets, children]]')
+
+console.log(people[0].pets[0].name);
+console.log(people[1].children[2].pets[1].name);
+console.log(people[1].children[2].children[0].name);
+```
+
+Loading a relation recursively:
+
+```
+const people = await Person.query().withGraphFetched('children.^')
+```
+
+Limit the recursion to three levels:
+
+```
+const people = await Person.query().withGraphFetched('children.^3')
+console.log(people[0].children[0].children[0].children[0].name)
+```
+
+#### Relation Modifiers
+
+Relations can be modified/filtered using the modifyGraph() method:
+
+`queryBuilder.modifyGraph(expressionWhereTheFilterShallBeApplied, theFilterItself)`
+
+```
+User.query()
+  .withGraphFetched('[children.[pets,movies], movies]')
+  .modifyGraph('children.[pets,movies]', (builder) => {
+    builder.orderBy('id')
+  })
+```
+
+A Model subclass can have modifiers:
+
+```
+class Movie extends Model {
+  static get tableName() {
+    return 'movies'
+  }
+
+  static get modifiers() {
+    return {
+      goodMovies(builder) {
+        builder.where('rottenScore', '>', 3)
+      },
+      orderByName(builder) {
+        builder.orderBy('name')
+      }
+    }
+  }
+}
+```
+
+by using QueryBuilder.modifyGraph(), we can make use of those static modifiers in our Eager Loading methods QueryBuilder.withGraphFetched and QueryBuilder.withGraphJoined:
+
+```
+const people = await Person.query()
+  .withGraphFetched('movies')
+  .modifyGraph('movies', 'goodMovies')
+
+const people = await Person.query()
+  .withGraphFetched('movies')
+  .modifyGraph('movies', ['goodMovies', 'orderByName'])
+```
+
+we might also create modifiers on-the-fly:
+
+```
+const people = await Person.query()
+  .withGraphFetched('movies')
+  .modifiers({
+    terror(builder) {
+      builder.where('genre', 'terror')
+    },
+    pg13(builder) {
+      builder.where('classification', 'pg13')
+    },
+  })
+  .modifyGraph('movies', ['terror', 'pg13'])
+```
+
+### withGraphJoined
+
+Instead of using graph modifiers we could just try this:
+
+```
+const people = await Person.query()
+  .withGraphFetched('movies')
+  .where({ 'movies.genre': 'terror', 'movies.classification': 'pg13' })
+```
+
+But that wouldn't work, because when using withGraphFetched, we can't refer to related items from the root query, and the reason is the tables are NOT joined.
+
+withGraphJoined joins the tables before anything else, so we can actually refer to related tables in the root query:
+
+```
+const people = await Person.query()
+  .withGraphJoined('movies')
+  .where({ 'movies.genre': 'terror', 'movies.classification': 'pg13' })
+```
+
+## Graph Inserts
+
+We've seen graph selects (eager loading). Of course graph inserts are possible.
+
+allowGraph also limits which relations can be inserted using insertGraph
+
+Inserted objects have ids added to them and related rows have foreign keys set, but no other columns get fetched from the database. You have to use insertGraphAndFetch for that.
+
+```
+const graph = await Person.query().insertGraph({
+  firstName: 'Sylvester',
+  lastName: 'Stallone',
+  children: [{ firstName: 'Sage', lastName: 'Stallone' }],
+})
+```
+
+In order to reference the same model in multiple places of the graph, we can use the special properties #id and #ref. Also, a second artgument must be passed to insertGraph: an object with property allowRefs true.
+
+```
+  await Person.query().insertGraph(
+    [
+      {
+        firstName: 'Jennifer',
+        lastName: 'Lawrence',
+
+        movies: [
+          {
+            '#id': 'silverLiningsPlaybook',
+            name: 'Silver Linings Playbook',
+            duration: 122,
+          },
+        ],
+      },
+      {
+        firstName: 'Bradley',
+        lastName: 'Cooper',
+
+        movies: [
+          {
+            '#ref': 'silverLiningsPlaybook',
+          },
+        ],
+      },
+    ],
+    { allowRefs: true }
+  )
+```
+
+If we have to relate a new item with an existing one, the relate option has to be true
+
+```
+await Person.query().insertGraph(
+  [
+    {
+      firstName: 'Jennifer',
+      lastName: 'Lawrence',
+
+      movies: [
+        {
+          id: 2636
+        }
+      ]
+    }
+  ],
+  {
+    relate: true
+  }
+);
+```
+
+## API Reference
+
+### module Objection
+
+Here's what we need:
+
+```
+  const {
+    Model,
+    snakeCaseMappers,
+    ValidationError,
+    NotFoundError,
+    DBError,
+    ConstraintViolationError,
+    UniqueViolationError,
+    NotNullViolationError,
+    ForeignKeyViolationError,
+    CheckViolationError,
+    DataError,
+  } = require('objection')
+```
+
+### class QueryBuilder
+
+The most important component in objection. An instance of QueryBuilder is returned by every call to methods that fetch or modify items in the database.
+
+It's a wrapper around knex's QueryBuilder. The fundamental difference is that knex's QueryBuilder returns plain JS objects, while objection's QueryBuilder returns Model subclass instances.
+
+QueryBuilder is also a thenable, meaning we can use it like a promise. Actually the preferred way to use it is with the await operator.
+
+#### methods
+
+insert(), patch(), update(), del()
+
+### class Model
+
+We'll use this class before the QueryBuilder class.
+
+It represents a database table and its instances represent rows.
+
+The tableName getter property is mandatory. A Model class can define relationships via the static getter property relationMappings. A jsonSchema can be used to validate inputs. An idColumn property can be used to change the default primary key from 'id'.
+
+Sometimes is a good idea to create a BaseModel subclass and inherit all our models from it.
+
+```
+const { Model } = require('objection')
+
+class Parrot extends Model {
+  static get tableName() {
+    return 'parrot'
+  }
+
+  static get idColumn() {
+    return 'beakNo'
+  }
+
+  static get relationMappings() {
+    return {
+      friends: {
+        relation: Model.ManyToManyRelation,
+        modelClass: Parrot,
+        join: {
+          from: 'parrot.id',
+          through: {
+            from: 'parrot_parrot.id1',
+            to: 'parrot_parrot.id2',
+          },
+          to: 'parrot.id',
+        },
+      },
+    }
+  }
+}
+```
+
+#### static virtualAttributes
+
+The returned array of instance getter and method names means those will be actual properties of the JSON object returned by a call to toJSON() on an instance.
+
+```
+class Person extends Model {
+  static get virtualAttributes() {
+    return ['fullName', 'isFemale']
+  }
+
+  fullName() {
+    return `${this.firstName} ${this.lastName}`
+  }
+
+  get isFemale() {
+    return this.gender === 'female'
+  }
+}
+
+const person = Person.fromJson({
+  firstName: 'Jennifer',
+  lastName: 'Aniston',
+  gender: 'female'
+});
+
+// Note that `toJSON` is always called automatically
+// when an object is serialized to a JSON string using
+// JSON.stringify. You very rarely need to call `toJSON`
+// explicitly. koa, express and all other frameworks I'm
+// aware of use JSON.stringify to serialize objects to JSON.
+const pojo = person.toJSON();
+
+console.log(pojo.fullName); // --> 'Jennifer Aniston'
+console.log(pojo.isFemale); // --> true
+```
+
+#### static modifiers
+
+These are reusable functions for query building using QueryBuilder.modify() or QueryBuilder.modifyGraph().
+
+```
+class Animal extends Model {
+  static get modifiers() {
+    return {
+      dogs(builder) {
+        builder.where('species', 'dog');
+      }
+    };
+  }
+}
+
+Person.query()
+  .withGraphFetched('[pets]')
+  .modifyGraph('pets', 'dogs');
+```
+
+#### static methods
+
+Model.knex(knexInstance) //setter
+Model.knex() //getter for Model.knex().raw(...args)
+Model.query()
+Model.relatedQuery(relationName).for(idModelsHere).relate(idForRelationHere)
+//relatedQuery() without a for() can be used as a subquery.
+Model.fetchGraph(modelInstances, relationExpression)
