@@ -848,7 +848,99 @@ QueryBuilder is also a thenable, meaning we can use it like a promise. Actually 
 
 #### methods
 
-insert(), patch(), update(), del()
+insert(), patch(), update(), delete()
+
+#### Find Methods
+
+Those that go together are the same query
+
+```
+await User.query().findById(3).debug()
+await User.query().where('id', '=', 4).debug()
+
+await User.query().findByIds([5, 6]).debug()
+await User.query().whereIn('id', [7, 8]).debug()
+
+// both below are the same and DO NOT add limit=1 to the query. All they do is return the first element if the result comes in an array
+const a = await User.query().findOne('login', '=', 'admin')
+const b = await User.query().where('login', '=', 'admin').first()
+const c = await User.query().where('login', '=', 'admin') //control. returns an array of one element, so we'll have to use c[0] later
+```
+
+QueryBuilder.alias(alias) aliases the table used in the query
+`await User.query().alias('u').where('u.id', 1).debug()`
+
+QueryBuilder.aliasFor(tableNameOrModelClass, alias) gives an alias for any table in the query
+
+```
+  await User.query().aliasFor('user', 'u').where('u.id', 1).debug()
+  await User.query().aliasFor(User, 'u').where('u.id', 1).debug()
+```
+
+QueryBuilder.whereComposite(columns, operator, values) is for composite primary keys
+QueryBuilder.whereInComposite(columns, values) same
+
+See Knex docs for those:
+select()
+as() // this aliases a subquery, not a table
+columns()
+column()
+from()
+into()
+with()
+withSchema()
+table()
+distinct()
+distinctOn()
+count(), countDistinct()
+where(), andWhere(), orWhere(), whereNot(), orWhereNot(), whereExists(), orWhereExists(), whereNotExists(), orWhereNotExists(), whereIn(), orWhereIn(), whereNotIn(), orWhereNotIn(), whereNull(), orWhereNull(), whereNotNull(), orWhereNotNull(), whereBetween(), whereNotBetween(), orWhereBetween(), orWhereNotBetween(), whereColumn(), andWhereColumn(), orWhereColumn(), whereNotColumn(), andWhereNotColumn(), orWhereNotColumn()
+min(), max(), sum(), avg(), avgDistinct(), groupBy()
+orderBy()
+limit(), offset()
+union(), unionAll(), intersect()
+returning(),
+increment(), decrement(), truncate()
+
+#### Mutating Methods
+
+QueryBuilder.insert(modelsOrObjects).returning('_')
+QueryBuilder.insertGraph(graph).returning('_')
+QueryBuilder.patch(modelOrObject).returning('_')
+QueryBuilder.update(modelOrObject).returning('_')
+QueryBuilder.delete().returning('\*')
+QueryBuilder.relate()
+QueryBuilder.unrelate()
+
+#### Eager Loading Methods
+
+QueryBuilder.withGraphFetched()
+QueryBuilder.withGraphJoined()
+QueryBuilder.graphExpressionObject()
+QueryBuilder.allowGraph()
+QueryBuilder.modifyGraph()
+
+#### Join Methods
+
+QueryBuilder.innerJoinRelated()
+QueryBuilder.outerJoinRelated()
+QueryBuilder.leftJoinRelated()
+QueryBuilder.leftOuterJoinRelated()
+QueryBuilder.rightJoinRelated()
+QueryBuilder.rightOuterJoinRelated()
+QueryBuilder.fullOuterJoinRelated()
+
+#### Other Methods
+
+QueryBuilder.debug() // prints query
+QueryBuilder.resolve() // fakes a query resolution
+QueryBuilder.reject() // fakes a query rejection
+QueryBuilder.execute() // executes query and returns a promise
+QueryBuilder.clone()
+QueryBuilder.resultSize() // better than count(), which returns an array of objects instead of a number
+QueryBuilder.page(page, pageSize) //executes the actual query and another to get the total count. If Postgres has an empty result set, we don't get the total count.
+QueryBuilder.first()
+QueryBuilder.modify()
+QueryBuilder.modifiers()
 
 ### class Model
 
@@ -955,3 +1047,40 @@ Model.query()
 Model.relatedQuery(relationName).for(idModelsHere).relate(idForRelationHere)
 //relatedQuery() without a for() can be used as a subquery.
 Model.fetchGraph(modelInstances, relationExpression)
+
+#### instance methods
+
+Model.$query() // all queries only affect this Model instance
+
+```
+const person = await Person.query()
+const reFetchedPerson = await person.$query() //refetches the same row. Doesn't affect the model instance in 'person', though
+person.$set(refetchedPerson) //sets the values of this model instance to those of another model instance
+```
+
+`Model.$query()` returns a QueryBuilder, just as `Model.query()`. As we've already seen, the QueryBuilder is a thenable, meaning that an await operator will give us its resolving value. That's why `const person = await Person.query()` works
+
+```
+Model.$query().insert()
+Model.$query().patch()
+Model.$query().update()
+Model.$query().delete()
+```
+
+So `const builder = Person.relatedQuery(relationName).for(person)` is the same as `const builder = person.$relatedQuery(relationName)`
+
+```
+Model.$relatedQuery().relate()
+Model.$relatedQuery().unrelate()
+```
+
+With `Model.$relatedQuery().delete()` the related item is deleted, but in the case of a Model.ManyToManyRelation, the join table entry is not deleted, unless you used ON DELETE CASCADE in your database migrations to make the database properly delete the join table rows when either end of the relation is deleted.
+
+`Model.$clone(options)` return a deep copy of a model instance. A shallow copy without relations can be created by passing the `shallow: true` option.
+
+```
+Model.$setRelated(relation, relatedModels)
+Model.$appendRelated(relation, relatedModels)
+```
+
+`instance.$fetchGraph(expression)` is a shortcut for `Model.fetchGraph(instance, expression)`
