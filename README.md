@@ -579,23 +579,26 @@ const deletedJennifers = await Person.query()
   .returning('*')
 ```
 
-## Relation Queries
+## Relation Queries - from Model.query() to Model.relatedQuery()
+
+### Find queries
 
 This is where the model's relationMappings property gets used by Objection.
 
-The static method relatedQuery() receives just the relationMapping name.
+The static method relatedQuery() receives one parameter: the relationMapping name.
 There's also the instance method $relatedQuery().
 
-Two queries needed for the instance method $relatedQuery():
+The instance method $relatedQuery() requires... an instance. So the example below needs two queries to get the dogs of a particular person:
 
 ```
 const person = await Person.query()
-  .findById(1);
+  .findById(1)
+
 const dogs = await person.$relatedQuery('pets')
   .where('species', 'dog')
 ```
 
-Just one query needed for the static method relatedQuery():
+For the same result, the static method relatedQuery() requires only one query:
 
 ```
 //weird for method ???
@@ -604,10 +607,85 @@ const dogs = await Person.relatedQuery('pets')
   .where('species', 'dog')
 ```
 
-With Model.HasManyRelation and Model.BelongsToOneRelation, we might as well just use vanilla Knex to get what we want:
+With Model.HasManyRelation and Model.BelongsToOneRelation relations, we might as well just use regular query(). It's just easier to write and read:
 
 ```
 const dags = await Pets.query().where({ ownerId: 1, species: 'dog' })
 ```
 
-It's just easier to write and read.
+In a Model.ManyToManyRelation, though, a regular query() is more complicated than a relatedQuery():
+
+```
+//pure Knex, because we didn't write a Model subclass for the join table:
+  const dags = await knex('persons')
+    .innerJoin('persons_pets', 'persons.id', 'persons_pets.personId')
+    .innerJoin('pets', 'persons_pets.petId', 'pets.id')
+    .where({ 'person.id': 1, species: 'dog' })
+    .toString()
+
+//Objection's Model.relatedQuery() is the same code as for any other type of relation:
+  const dags = await Person.relatedQuery('pets')
+  .for(1)
+  .where('species', 'dog')
+```
+
+### Insert queries
+
+We want to insert a new object in a related table and have Objection do the necessary updates to the needed tables to create the relationship for us.
+
+We do the same .relatedQuery(relationMappingsPropertyName) or .$relatedQuery(relationMappingsPropertyName) and then chain a call to the .insert() method:
+
+```
+  const person = await Person.query().where('id', 1)
+  const newDag = await person.$relatedQuery('dogs').insert({ name: 'Fluffy' })
+
+  const newDag = await Person.relatedQuery('pets')
+    .for(1)
+    .insert({ name: 'Fluffy' })
+```
+
+If we need to write to extra columns to the join table of a many-to-many relation, we need first to define those columns in the 'extra' property of the 'through' property of one of the object properties of the relationMappings property. The extra property is an array with the names of the columns only. The details of those columns is supposed to be in the schema defined by Knex in its migration:
+
+```
+class Person extends Model {
+  ...
+
+  static get relationMappings() {
+    return {
+      'pets': {
+        relation: Model.ManyToManyRelation,
+        from: 'person.id',
+        through: {
+          from: 'persons_pets.personId',
+          to: 'persons_pets.petId',
+          extra: ['responsibilityLevel']
+        },
+        to: 'pets.id'
+      }
+    }
+  }
+}
+
+const newDag = await Person.for(1).relatedQuery('pets').insert({
+  name: 'Fido',
+  reponsibilityLevel: 100,
+})
+```
+
+### Relate queries
+
+Relating means attaching an EXISTING item to another through a relationship defined in the relationMappings property of the Model.
+
+For that we'll use the QueryBuilder.relate() method:
+
+```
+const actor = await Actor.query().findById(100)
+const movie = await Movie.query().findById(200) //the movie already exists; but is not related to the actor
+await actor.$relatedQuery('movies').relate(movie) //now it is
+```
+
+The same can be done using the static method Model.relatedQuery() before QueryBuilder.relate():
+
+```
+await Actor.relatedQuery('movies').for(100).relate(200)
+```
