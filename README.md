@@ -2,7 +2,7 @@
 
 ## What is Knex
 
-Knex is a module for an SQL query builder and schema builder for Postgresql and others featuring:
+Knex is a module for an SQL schema builder and query builder for Postgresql and others featuring:
 
 - callback, promise and stream interfaces for async flow control (pick the one you like);
 - connection pooling
@@ -10,7 +10,7 @@ Knex is a module for an SQL query builder and schema builder for Postgresql and 
 
 ## Installation
 
-The target environment for Knex is Node.js. It can be built for the browser using browserify or webpack, but that's discouraged outside of educational purposes, due to security concerns.
+The target environment for Knex is Node.js. It can be built for the browser using browserify or webpack, but due to security concerns that's discouraged outside of educational purposes.
 
 Install knex and the database library of your choosing
 
@@ -20,14 +20,14 @@ npm install knex pg
 
 ## Configuration/Connection
 
-knex's module is actually a function. Call it on a literal object, which we'll call the _knex configuration_.
+knex's module is actually a function. Call it on the literal object we'll call _knex configuration_.
 
-The _knex configuration_ has a couple required properties:
+_knex configuration_ has a couple required properties:
 
 - client
 - connection
 
-`client` will be our database library, 'pg', which we just installed.
+`client` is our database library, 'pg', which we just installed as a dependency.
 `connection` accepts a string, a literal object, or a function (for dynamically determined connection configurations).
 
 The function takes no parameters and returns either a literal object or a promise for one. By default the returned object is cached and reused for further connections. That behavior can be changed if say we need to work with a temporary authentication token. The `expirationChecker` property does that job.
