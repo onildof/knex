@@ -1164,3 +1164,109 @@ Model.$appendRelated(relation, relatedModels)
 ```
 
 `instance.$fetchGraph(expression)` is a shortcut for `Model.fetchGraph(instance, expression)`
+
+## Raw
+
+Sometimes we may need to use a raw expression in a query. A raw query object can be injected anywhere we want. Proper bindings ensure
+values are escaped properly, preventing SQL-injection attacks.
+
+### Raw Parameter Binding
+
+knex(sql, bindings)
+
+The sql string may contain positional parameters.
+In bindings we must choose which parameters are to be interpreted as values or identifiers.
+
+```
+knex('users')
+  .select(knex.raw('count(*) as user_count, status'))
+  .where(knex.raw(1)) // WHERE 1 means don't even filter. This is used if you find it necessary to add a WHERE clause but not filter anything.
+  .orWhere(knex.raw('status <> ?', [1]))
+  .groupBy('status')
+
+knex('users').where(knex.raw('?? = ?', ['user.name', 1]))
+
+knex('users')
+  .where(
+    knex.raw('LOWER("login") = ?', 'knex')
+  )
+  .orWhere(
+    knex.raw('accesslevel = ?', 1)
+  )
+  .orWhere(
+    knex.raw('updtime = ?', '01-01-2016')
+  )
+```
+
+For when positional binding becomes inconvenient, theres named bindings:
+
+```
+const raw =
+  ':name: = :thisGuy or :name: = :otherGuy or :name: = :undefinedBinding'
+
+knex('users').where(
+  knex.raw(raw, {
+    name: 'users.name',
+    thisGuy: 'Chad',
+    otherGuy: 'Tyrone',
+    undefinedBinding: undefined,
+  })
+)
+```
+
+For injecting an array of values in a query, there's a clever use of Array.prototype.map()
+
+```
+const myArray = [1, 2, 3]
+
+knex.raw(
+  `select * from users where id in (${myArray.map((_) => '?').join(',')})`,
+  myArray
+)
+```
+
+## Migrations
+
+All our schema changes are done through migrations.
+
+Knex offers a command line interface for migrations.
+
+`knex init` creates the knexfile with the connection configuration
+
+Once you have that knexfile filled with connection data, you can use the migrate cli tool to make a new migration file:
+`knex migrate:make migration_name`
+
+Then run all migrations that have not yet been run
+
+`knex migrate:latest`
+`knex migrate:latest --env development`
+
+Or run the next migration that has not yet been run (just one)
+
+`knex migrate:up`
+
+Or even name the one you want
+
+`knex migrate:up 001_migration_name.js`
+
+List migrations
+
+`knex migrate:list`
+
+Rollback
+`knex migrate:rollback -all`
+`knex migrate:rollback`
+`knex migrate:down`
+
+### Seed files
+
+Now to populate your brand new schema with dummy data, use the command line interface for seeds.
+
+Make the seed file
+`knex seed:make seed_name`
+
+To run all seed files in alphabetical order
+`knex seed:run`
+
+To run specific seed
+`knex seed:run --specific=seed_name.js --specific=another_seed_name.js`

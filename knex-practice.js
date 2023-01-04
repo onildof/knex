@@ -286,9 +286,16 @@ HAVING quantity >= 2
     .havingExists(function () {
       this.select('*')
         .from('accounts')
-        .whereRaw('orders.account_id = accounts.id')
+        .where(knex.raw('orders.account_id = accounts.id'))
     })
     .havingBetween('id', [5, 10])
-    .select('product')
-    .sum({ amountSum: 'amount' })
+    .select('product', knex.raw('SUM(amount) AS sumAmount'))
+}
+
+module.exports.knexSchemaBuilderPractice = function (knex) {
+  knex.schema.alterTable('users', function (table) {
+    table.dropColumn('name')
+    table.string('first_name')
+    table.renameColumn('ss', 'social_security')
+  })
 }
