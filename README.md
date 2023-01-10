@@ -242,7 +242,7 @@ knex
 
 ## The Schema Builder
 
-Begins with knex.schema
+Begins with knex.schema. All methods return a Promise.
 
 ### createTable(tableName, callbackThatModifiesTheCreatedTable)
 
@@ -275,58 +275,111 @@ references(columnName).inTable(tableName)
 
 ## Migrations
 
-For easy changes to an existing database, and for determining the initial schema as well
-First things first, migrations use a **knexfile.js**, which is created by running:
+All our schema changes are done through migrations.
 
-`knex init`
+Knex offers a command line interface for migrations (the migrate cli tool).
 
-It'll create a knexfile.js with the configurations. We might as well use that file as a config when importing the knex library.
+`knex init` creates the knexfile.js with the connection configuration
 
-There's a command line tool:
+Once you have that knexfile filled with connection data, you can use the migrate cli tool to make a new migration file:
+`knex migrate:make migration_name`
 
-`npx knex migrate:latest --help`
+Then run all migrations that have not yet been run
 
-We might create a new migration using
+`knex migrate:latest`
+`knex migrate:latest --env development`
 
-`npx knex migrate:make migration_name`
-
-Now update the database matching your NODE_ENV by running
-
-`npx knex migrate:latest`
-
-Rolling back the last batch (?) of migrations
-
-`knex migrate:rollback`
-`knex migrate:rollback --all`
-
-To run the next migration that has not yet been run, or undo it
+Or run the next migration that has not yet been run (just one)
 
 `knex migrate:up`
-`knex migrate:up migration_name`
-`knex migrate:down`
-`knex migrate:down migration_name`
 
-To list both completed and pending migrations:
+Or even name the one you want
+
+`knex migrate:up 001_migration_name.js`
+
+List migrations
 
 `knex migrate:list`
 
+Rollback
+`knex migrate:rollback -all`
+`knex migrate:rollback`
+`knex migrate:down`
+
 ## Seed files
 
-Seed files populate the schema we created through migrations.
+Now to populate your brand new schema with dummy data, use the command line interface for seeds.
 
-There's a CLI for them as well.
+If no seed directory is specified in knexfile.js, then the files are created in ./seeds
 
+Make the seed file
 `knex seed:make seed_name`
 
-The seeds directory can be specified by our knexfile.js for each environment. If it isn't, then the files are created in ./seeds
-
-To run all the seed files in alphabetical order, execute:
-
+To run all seed files in alphabetical order
 `knex seed:run`
 
-To run specific seed files, do:
+To run specific seed
+`knex seed:run --specific=seed_name.js --specific=another_seed_name.js`
 
-`knex seed:run --specific=seed-filename.js --specific=another-seed-filename.js`
+## Raw
+
+Sometimes we may need to use a raw expression in a query. A raw query object can be injected anywhere we want. Proper bindings ensure
+values are escaped properly, preventing SQL-injection attacks.
+
+### Raw Parameter Binding
+
+knex(sql, bindings)
+
+The sql string may contain positional parameters.
+In bindings we must choose which parameters are to be interpreted as values or identifiers.
+
+```
+knex('users')
+  .select(knex.raw('count(*) as user_count, status'))
+  .where(knex.raw(1)) // WHERE 1 means don't even filter. This is used if you find it necessary to add a WHERE clause but not filter anything.
+  .orWhere(knex.raw('status <> ?', [1]))
+  .groupBy('status')
+
+knex('users').where(knex.raw('?? = ?', ['user.name', 1]))
+
+knex('users')
+  .where(
+    knex.raw('LOWER("login") = ?', 'knex')
+  )
+  .orWhere(
+    knex.raw('accesslevel = ?', 1)
+  )
+  .orWhere(
+    knex.raw('updtime = ?', '01-01-2016')
+  )
+```
+
+For when positional binding becomes inconvenient, theres named bindings:
+
+```
+const raw =
+  ':name: = :thisGuy or :name: = :otherGuy or :name: = :undefinedBinding'
+
+knex('users').where(
+  knex.raw(raw, {
+    name: 'users.name',
+    thisGuy: 'Chad',
+    otherGuy: 'Tyrone',
+    undefinedBinding: undefined,
+  })
+)
+```
+
+For injecting an array of values in a query, there's a clever use of Array.prototype.map()
+
+```
+const myArray = [1, 2, 3]
+
+knex.raw(
+  `select * from users where id in (${myArray.map((_) => '?').join(',')})`,
+  myArray
+)
+```
 
 ## Recipes
 
@@ -436,7 +489,7 @@ class Student extends Model {
     return this.firstName + ' ' + this.lastName
   }
 
-  // Whenever a model instance is created, be it explicitly or implicitly, it is checked against this schema (it is optional). http://json-schema.org has more details
+  // Whenever a model instance is created, be it explicitly or implicitly, it is checked against this schema (this is optional). http://json-schema.org has more details
   static get jsonSchema() {
     return {
       type: 'object',
@@ -492,7 +545,7 @@ One technique to prevent this is to take advantage of the lazy access of relatio
 
 ## Basic Queries
 
-Essa é a parte mais difícil
+This is the hardest part.
 
 All methods return a QueryBuilder instance, which inherits from Knex's QueryBuilder while adding some more methods by Objection.
 
@@ -526,6 +579,8 @@ const users = await User.query()
 ### Knex didn't support arrow functions, Objection does
 
 "Where knex requires you to use an old fashioned function an this, with objection you can use arrow functions"
+
+From the docs, it seems Knex actually supports arrow functions. That quote must be old.
 
 ```
 const nonMiddleAgedJennifers = await Person.query()
@@ -601,13 +656,18 @@ const dogs = await person.$relatedQuery('pets')
 For the same result, the static method relatedQuery() requires only one query:
 
 ```
-//weird for method ???
 const dogs = await Person.relatedQuery('pets')
   .for(1)
   .where('species', 'dog')
 ```
 
-With Model.HasManyRelation and Model.BelongsToOneRelation relations, we might as well just use regular query(). It's just easier to write and read:
+This QueryBuilder.for(relationOwners) method is always used with relatedQuery() and $relatedQuery() and takes as argument the owner(s) of the relation. The argument can be:
+
+- a single identifier or an array of them
+- a model instance or an array of them
+- a query builder
+
+With Model.HasManyRelation and Model.BelongsToOneRelation relations, we might as well just use regular query():
 
 ```
 const dags = await Pets.query().where({ ownerId: 1, species: 'dog' })
@@ -618,7 +678,7 @@ It's just easier to write and read.
 In a Model.ManyToManyRelation, though, a regular query() is more complicated than a relatedQuery():
 
 ```
-//pure Knex, because we didn't write a Model subclass for the join table:
+//pure Knex, because we didn't write a Model subclass for the join table (as there's no reason to):
   const dags = await knex('persons')
     .innerJoin('persons_pets', 'persons.id', 'persons_pets.personId')
     .innerJoin('pets', 'persons_pets.petId', 'pets.id')
@@ -633,9 +693,9 @@ In a Model.ManyToManyRelation, though, a regular query() is more complicated tha
 
 ### Insert queries
 
-We want to insert a new object in a related table and have Objection do the necessary updates to the needed tables to create the relationship for us.
+We want to insert a new object in a related table and have Objection do the necessary updates to the owner table to create the relationship for us.
 
-We do the same .relatedQuery(relationMappingsPropertyName) or .$relatedQuery(relationMappingsPropertyName) and then chain a call to the .insert() method:
+We do the same Model.relatedQuery(relationMappingsPropertyName) or modelInstance.$relatedQuery(relationMappingsPropertyName) and then chain a call to the .insert() method:
 
 ```
   const person = await Person.query().where('id', 1)
@@ -707,7 +767,7 @@ The methods are QueryBuilder.withGraphFetched() and QueryBuilder.withGraphJoined
 
 ### allowGraph
 
-The relation expression can be limited by what's passed to a call to QueryBuilder.allowGraph(). If it's not a subset, then an error is thrown by withGraphFetched or withGraphJoined (and the query is rejected).
+The relation expression can be limited by what's passed to a call to QueryBuilder.allowGraph(). If it's not a subset of that, then the query is rejected and an error is thrown by withGraphFetched or withGraphJoined.
 
 ### withGraphFetched
 
@@ -835,7 +895,7 @@ allowGraph also limits which relations can be inserted using insertGraph
 Inserted objects have ids added to them and related rows have foreign keys set, but no other columns get fetched from the database. You have to use insertGraphAndFetch for that.
 
 ```
-const graph = await Person.query().insertGraph({
+await Person.query().insertGraph({
   firstName: 'Sylvester',
   lastName: 'Stallone',
   children: [{ firstName: 'Sage', lastName: 'Stallone' }],
@@ -1164,109 +1224,3 @@ Model.$appendRelated(relation, relatedModels)
 ```
 
 `instance.$fetchGraph(expression)` is a shortcut for `Model.fetchGraph(instance, expression)`
-
-## Raw
-
-Sometimes we may need to use a raw expression in a query. A raw query object can be injected anywhere we want. Proper bindings ensure
-values are escaped properly, preventing SQL-injection attacks.
-
-### Raw Parameter Binding
-
-knex(sql, bindings)
-
-The sql string may contain positional parameters.
-In bindings we must choose which parameters are to be interpreted as values or identifiers.
-
-```
-knex('users')
-  .select(knex.raw('count(*) as user_count, status'))
-  .where(knex.raw(1)) // WHERE 1 means don't even filter. This is used if you find it necessary to add a WHERE clause but not filter anything.
-  .orWhere(knex.raw('status <> ?', [1]))
-  .groupBy('status')
-
-knex('users').where(knex.raw('?? = ?', ['user.name', 1]))
-
-knex('users')
-  .where(
-    knex.raw('LOWER("login") = ?', 'knex')
-  )
-  .orWhere(
-    knex.raw('accesslevel = ?', 1)
-  )
-  .orWhere(
-    knex.raw('updtime = ?', '01-01-2016')
-  )
-```
-
-For when positional binding becomes inconvenient, theres named bindings:
-
-```
-const raw =
-  ':name: = :thisGuy or :name: = :otherGuy or :name: = :undefinedBinding'
-
-knex('users').where(
-  knex.raw(raw, {
-    name: 'users.name',
-    thisGuy: 'Chad',
-    otherGuy: 'Tyrone',
-    undefinedBinding: undefined,
-  })
-)
-```
-
-For injecting an array of values in a query, there's a clever use of Array.prototype.map()
-
-```
-const myArray = [1, 2, 3]
-
-knex.raw(
-  `select * from users where id in (${myArray.map((_) => '?').join(',')})`,
-  myArray
-)
-```
-
-## Migrations
-
-All our schema changes are done through migrations.
-
-Knex offers a command line interface for migrations.
-
-`knex init` creates the knexfile with the connection configuration
-
-Once you have that knexfile filled with connection data, you can use the migrate cli tool to make a new migration file:
-`knex migrate:make migration_name`
-
-Then run all migrations that have not yet been run
-
-`knex migrate:latest`
-`knex migrate:latest --env development`
-
-Or run the next migration that has not yet been run (just one)
-
-`knex migrate:up`
-
-Or even name the one you want
-
-`knex migrate:up 001_migration_name.js`
-
-List migrations
-
-`knex migrate:list`
-
-Rollback
-`knex migrate:rollback -all`
-`knex migrate:rollback`
-`knex migrate:down`
-
-### Seed files
-
-Now to populate your brand new schema with dummy data, use the command line interface for seeds.
-
-Make the seed file
-`knex seed:make seed_name`
-
-To run all seed files in alphabetical order
-`knex seed:run`
-
-To run specific seed
-`knex seed:run --specific=seed_name.js --specific=another_seed_name.js`
