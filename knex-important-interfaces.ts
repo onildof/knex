@@ -45,7 +45,7 @@ TableBuilder
   // this'll add created_at and updated_at fields. We'll not chain anything after it because that'd be nonsense.
   timestamps(true, true, false)
 
-  // this is for foreign keys. We'll always chain it with these other methods (only references(string) is required)
+  // this is for foreign keys. We'll always chain it with these other methods (only references(string) is required). This doesn't create a column, though. It only works for EXISTING columns.
   foreign(string).references(string).inTable(string).deferrable(string).onUpdate(string).onDelete(string)
 
 ColumnBuilder
