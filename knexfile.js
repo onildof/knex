@@ -1,4 +1,6 @@
 require('dotenv').config()
+const { knexSnakeCaseMappers } = require('objection')
+
 /**
  * @type { Object.<string, import("knex").Knex.Config> }
  */
@@ -10,8 +12,9 @@ module.exports = {
       min: 0,
       max: 10,
     },
-    debug: true,
+    debug: false,
     asyncStackTraces: true,
+    ...knexSnakeCaseMappers(),
   },
   production: {
     client: 'pg',
@@ -22,5 +25,6 @@ module.exports = {
     },
     debug: false,
     asyncStackTraces: false,
+    ...knexSnakeCaseMappers(),
   },
 }

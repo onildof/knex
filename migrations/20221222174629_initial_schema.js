@@ -11,15 +11,15 @@ exports.up = function (knex) {
 
       //parentId. Deleting the parent won't deleted the child
       table
-        .integer('parentId')
+        .integer('parent_id')
         .unsigned()
         .references('id')
         .inTable('persons')
         .onDelete('SET NULL')
 
       //other columns
-      table.string('firstName')
-      table.string('lastName')
+      table.string('first_name')
+      table.string('last_name')
       table.integer('age')
     })
     .createTable('movies', function (table) {
@@ -32,14 +32,15 @@ exports.up = function (knex) {
       table.increments('id')
       table.primary('id')
 
+      table.string('role')
       table
-        .integer('personId')
+        .integer('person_id')
         .unsigned()
         .references('id')
         .inTable('persons')
         .onDelete('CASCADE')
       table
-        .integer('movieId')
+        .integer('movie_id')
         .unsigned()
         .references('id')
         .inTable('movies')
@@ -51,7 +52,7 @@ exports.up = function (knex) {
 
       // Deleting the owner will delete the animals
       table
-        .integer('ownerId')
+        .integer('owner_id')
         .unsigned()
         .references('id')
         .inTable('persons')
@@ -66,6 +67,11 @@ exports.up = function (knex) {
       table.text('author')
       table.integer('year')
     })
+    .createTable('users', function (table) {
+      table.increments('id')
+      table.text('username')
+      table.text('password')
+    })
 }
 
 /**
@@ -78,4 +84,6 @@ exports.down = function (knex) {
     .dropTableIfExists('animals')
     .dropTableIfExists('movies')
     .dropTableIfExists('persons')
+    .dropTableIfExists('books')
+    .dropTableIfExists('users')
 }

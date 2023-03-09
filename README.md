@@ -20,7 +20,7 @@ npm install knex pg
 
 ## Configuration/Connection
 
-knex's module is actually a function. Call it on the literal object we'll call _knex configuration_.
+knex's default export is a function. Pass to it a literal object we'll call _knex configuration_.
 
 _knex configuration_ has a couple required properties:
 
@@ -49,7 +49,7 @@ Initializing the knex library must be done only once, as it creates a connection
 
 It's the interface for _building_ and _executing_ queries.
 
-This API uses identifiers for tables and columns a lot, so there's a syntax for those.
+In order to refer to tables and columns, the Query Builder uses an identifier syntax:
 
 ### Identifier Syntax
 
@@ -59,10 +59,19 @@ identifierName can be:
 - `tableName`
 - `tableName.columnName`
 
-An identifierName can be aliased:
+Any identifierName can be aliased:
 
 - `identifierName as aliasName`
 - `{ aliasName: identifierName } // object syntax`
+
+So,
+
+- `columnName as aliasName`
+- `tableName as aliasName`
+- `tableName.columnName as aliasName`
+- `{ aliasName: columnName }`
+- `{ aliasName: tableName }`
+- `{ aliasName: tableName.columnName }`
 
 ### Common
 
@@ -78,61 +87,91 @@ knex.from('books').select()
 
 #### column names: select() or column()
 
-knex('books').select('title', { by: 'author' })
-knex('books').select(['title', 'author as by'])
-knex('books').select('title', 'author as by')
+more succint:
+knex('books').select('title', { by: 'author' }, 'year as published')
+knex('books').select(['title', { by: 'author' }, 'year as published'])
 knex('books').select()
+knex('books').select('\*')
 
-knex('books').column('title', { by: 'author' }).select()
-knex('books').column(['title', 'author as by']).select()
-knex('books').column('title', 'author as by').select()
-knex('books').column().select()
+more verbose:
+knex.from('books').column('title', { by: 'author' }, 'year as published').select()
+knex.from('books').column(['title', { by: 'author' }, 'year as published']).select()
+knex.from('books').column().select()
+knex.from('books').column('\*').select()
 
 #### offset and limit
 
 qb.limit(10)
 qb.offset(30)
 
-#### union, intersect,
+#### union, unionAll, intersect
 
-qb.union(function { this.qb }) // apparently the union method internally binds the callback to the knex object before calling it
-qb.union([qb, qb])
-qb.union(qb, qb)
+qb1.union(function () { this.qb2 },function () { this.qb3 }) // For the callback function syntax, apparently the union method internally binds its callback parameter to the knex object before calling it
+qb1.union([qb2, qb3]) // array syntax
+qb1.union(qb2, qb3) // list syntax
+knex.union(qb1, qb2) // or any of the syntaxes above
 
 #### insert
 
+OBJECT SYNTAX:
+succint:
 knex('books').insert({title: 'Dune'})
-knex.insert({title: 'Dune'}).into('books')
-knex('books').insert([{title: 'Snow Crash'}, {title: 'The Diamond Age'}]) //several inserts in one command
+
+verbose (use into() instead of from()):
+knex.into('books').insert({title: 'Dune'})
+
+one command for multiple insertions needs the ARRAY SYNTAX:
+knex('books').insert([{title: 'Snow Crash'}, {title: 'The Diamond Age'}])
 
 #### update (like insert but you'll want to follow up with a .where() call)
 
+There's only the succint way (can't use from() or into())
+
+OBJECT SYNTAX
 knex('books').update({title: 'Dune'}).where({title: 'Arrakis'})
+
+KEY, VALUE SYNTAX
+knex('books').update('title', 'Dune').where({title: 'Arrakis'})
 
 #### delete is a reserved word in JS, so del is used instead
 
 knex('books').del().where({title:'Dune'})
 
+So del() and update() use the succint syntax (receiving the tableName as a parameter)
+
 #### returning (PostgreSQL) determines which columns must be returned by an insert/update/del
+
+An insert query returns a knex object (not very useful).
+An update or delete query return the number of affected rows.
+If we'd like thesee operations to return columns of the affected rows, there's the returning() function:
 
 insertQuery.returning('id')
 updateQuery.returning(['id', 'title'])
+delQuery.returning('\*')
+
+these will return an array of objects containing a property for each specified column.
 
 #### count and countDistinct
+
+The value returned from an aggregate function such as count() is an array of columns
 
 knex('users').count('active')
 knex('users').count({ serviced: 'active' })
 knex('books').countDistinct({ writer: 'author' })
 
-#### min, max
+#### aggregate functions (min, max, avg, count, sum)
 
 qB.min('value')
 qB.max('value')
-
-#### sum, avg, sumDistinct, avgDistinct
-
 qB.sum('value')
-qB.avgDistinct('value')
+qB.avg('value')
+qB.count('value')
+
+I don't like the distinct methods (sumDistinct, avgDistinct, countDistinct). I'd rather use the regular ones plus knex.raw()
+
+qB.sum(knex.raw('DISTINCT value'))
+qB.avg(knex.raw('DISTINCT value'))
+qB.count(knex.raw('DISTINCT value'))
 
 #### increment, decrement (conveniences)
 
@@ -328,14 +367,14 @@ values are escaped properly, preventing SQL-injection attacks.
 
 ### Raw Parameter Binding
 
-knex(sql, bindings)
+knex.raw(sql, bindings)
 
 The sql string may contain positional parameters.
-In bindings we must choose which parameters are to be interpreted as values or identifiers.
+We must tell knex which parameters to interpret as values and which parameters to interpret as identifiers.
 
 ```
 knex('users')
-  .select(knex.raw('count(*) as user_count, status'))
+  .select(knex.raw('count(*) AS user_count, status'))
   .where(knex.raw(1)) // WHERE 1 means don't even filter. This is used if you find it necessary to add a WHERE clause but not filter anything.
   .orWhere(knex.raw('status <> ?', [1]))
   .groupBy('status')
@@ -354,7 +393,7 @@ knex('users')
   )
 ```
 
-For when positional binding becomes inconvenient, theres named bindings:
+For when positional binding (? and ??) becomes inconvenient, we use named bindings. In named bindings, the bindings parameter ceases to be an array (as that's inherently positional) and becomes an object with named properties:
 
 ```
 const raw =
@@ -370,14 +409,14 @@ knex('users').where(
 )
 ```
 
-For injecting an array of values in a query, there's a clever use of Array.prototype.map()
+Here's a clever use of Array.prototype.map() to create positional bindings for values in a query
 
 ```
-const myArray = [1, 2, 3]
+const bindings = [1, 2, 3]
 
 knex.raw(
-  `select * from users where id in (${myArray.map((_) => '?').join(',')})`,
-  myArray
+  `select * from users where id in (${bindings.map((value) => '?').join(',')})`,
+  bindings
 )
 ```
 
@@ -440,7 +479,9 @@ Objection doesn't meddle with schema creation and migration. That's left to Knex
 
 ## Configuration
 
-We've already configured a db client and connection when we created the knex instance. We pass this instance to Objection using
+We've already configured a db client and connection when we created the Knex instance.
+
+One of the properties in Objection's module.exports is the class Module, which we'll use to register the Knex instance:
 
 `Model.knex(knex)`
 
@@ -458,8 +499,9 @@ class Student extends Model {
 
   static get relationMappings() {
     const Attendance = require('./Attendance') //another model
+
     return {
-      attendance: {
+      attendances: {
         relation: Model.hasManyRelation,
         modelClass: Attendance,
         join: {
@@ -473,9 +515,9 @@ class Student extends Model {
 ```
 
 Models can optionally define a jsonSchema for input validation.
-Each instance of a class represents a table row.
 Each Model subclass inherits an idColumn property with value 'id'. You'll need to explicitly override it if your table differs in its primary key.
-Objection has no global configuration or state. There's no Objection instance. Everything is done through Model subclasses.
+Each instance of such a class represents a table row.
+Objection has no global configuration or state. There's no Objection instance. Everything is done through the Model subclasses.
 Most of the time our models will share a similar configuration, which invites us to create a BaseModel class and inherit all our models from that.
 
 Objection considers database schema to be a separate concern which should be dealt with using knex migrations only.
@@ -547,9 +589,9 @@ One technique to prevent this is to take advantage of the lazy access of relatio
 
 This is the hardest part.
 
-All methods return a QueryBuilder instance, which inherits from Knex's QueryBuilder while adding some more methods by Objection.
+All methods return a QueryBuilder instance, which extends Knex's QueryBuilder with some more methods by Objection.
 
-Objection lets us print the executed query to console by chaining a call to .debug()
+Objection lets us print the executed query to console by chaining a call to .debug(). This is different from Knex's .toString() and .toSQL() in the sense that the query is actually executed.
 
 ### Fetch item by id
 
@@ -578,7 +620,7 @@ const users = await User.query()
 
 ### Knex didn't support arrow functions, Objection does
 
-"Where knex requires you to use an old fashioned function an this, with objection you can use arrow functions"
+"Where knex requires you to use an old fashioned function and this, with objection you can use arrow functions"
 
 From the docs, it seems Knex actually supports arrow functions. That quote must be old.
 
@@ -603,10 +645,42 @@ in Objection we have:
 
 ```
 // returning an instance of Books
+const book = await Books.query().insert({title: 'Dune'})
+
+{
+  method: 'insert',
+  options: {},
+  timeout: false,
+  cancelOnTimeout: false,
+  bindings: [ 'Dune' ],
+  __knexQueryUid: 'soA3WaDjcSNndOwkQ_4tC',
+  sql: 'insert into "books" ("title") values (?) returning "id"',
+  returning: 'id'
+}
+Book { title: 'Dune', id: 3 }
+
+// remember, an instance is ALWAYS returned by an Objection query. In this case, it'll have the properties we defined, plus the id of the created row
+// now if we want to force even null table columns to be properties of the instance, then we use the returning method:
+
 const book = await Books.query().insert({title: 'Dune'}).returning('*')
+
+{
+  method: 'insert',
+  options: {},
+  timeout: false,
+  cancelOnTimeout: false,
+  bindings: [ 'Dune' ],
+  __knexQueryUid: 'eCvI23yZe0oZES0d3qUxP',
+  sql: 'insert into "books" ("username") values (?) returning *',
+  returning: [ '*' ]
+}
+Book { title: 'Dune', id: 4, author: null }
+
 ```
 
-### Patch, Update
+### Patch, Update, Delete
+
+Patch, Update and Delete by default return the number of rows affected. We can use returning() to make it return instances.
 
 ```
 const numUpdated = await Person.query()
@@ -619,11 +693,7 @@ const jennifer = await Person.query()
   .where('id', 1234)
   .patch({ firstName: 'Jenn', lastName: 'Lawrence' })
   .returning('*')
-```
 
-### Delete
-
-```
 const numDeleted = await Person.query()
   .where({ firstName: 'Jennifer' })
   .delete()
@@ -638,12 +708,14 @@ const deletedJennifers = await Person.query()
 
 ### Find queries
 
-This is where the model's relationMappings property gets used by Objection.
+When is the relationMappings() static getter ever used?
 
-The static method relatedQuery() receives one parameter: the relationMapping name.
-There's also the instance method $relatedQuery().
+By Model's static method relatedQuery(). It receives only one parameter: a name of a relation mapping.
+Besides Model's static method, there's Model's instance method counterpart: $relatedQuery()
 
-The instance method $relatedQuery() requires... an instance. So the example below needs two queries to get the dogs of a particular person:
+So Model.relatedQuery() and Model.$relatedQuery() both use ModelSubclass.relationMappings(). We never use relationMappings directly.
+
+The instance method $relatedQuery() from Model requires... an instance from Model (obviously). So the example below needs two queries in order to get the dogs of a particular person:
 
 ```
 const person = await Person.query()
@@ -653,7 +725,7 @@ const dogs = await person.$relatedQuery('pets')
   .where('species', 'dog')
 ```
 
-For the same result, the static method relatedQuery() requires only one query:
+For the same result, the static method relatedQuery() from Model requires no instance (obviously), therefore only one query is needed (BUT more methods are needed to be chained to the Query):
 
 ```
 const dogs = await Person.relatedQuery('pets')
@@ -661,7 +733,7 @@ const dogs = await Person.relatedQuery('pets')
   .where('species', 'dog')
 ```
 
-This QueryBuilder.for(relationOwners) method is always used with relatedQuery() and $relatedQuery() and takes as argument the owner(s) of the relation. The argument can be:
+This QueryBuilder.for(relationOwners) method is always used with relatedQuery() and takes as argument the owner(s) of the relation. The argument can be:
 
 - a single identifier or an array of them
 - a model instance or an array of them
@@ -670,7 +742,7 @@ This QueryBuilder.for(relationOwners) method is always used with relatedQuery() 
 With Model.HasManyRelation and Model.BelongsToOneRelation relations, we might as well just use regular query():
 
 ```
-const dags = await Pets.query().where({ ownerId: 1, species: 'dog' })
+const dags = await Pet.query().where({ ownerId: 1, species: 'dog' })
 ```
 
 It's just easier to write and read.
@@ -706,7 +778,7 @@ We do the same Model.relatedQuery(relationMappingsPropertyName) or modelInstance
     .insert({ name: 'Fluffy' })
 ```
 
-If we need to write to extra columns to the join table of a many-to-many relation, we need first to define those columns in the 'extra' property of the 'through' property of one of the object properties of the relationMappings property. The extra property is an array with the names of the columns only. The details of those columns is supposed to be in the schema defined by Knex in its migration:
+If we need to write to extra columns to the join table of a many-to-many relation, we need first to define those columns in the 'extra' property of the 'through' property of a Model's relation mapping. The 'extra' property is an array with the names of the columns. The details of those columns are not of Objection's concern; they're supposed to be in the schema defined in Knex's migration file:
 
 ```
 class Person extends Model {
@@ -741,15 +813,30 @@ Relating means attaching an EXISTING item to another through a relationship defi
 For that we'll use the QueryBuilder.relate() method:
 
 ```
-const actor = await Actor.query().findById(100)
-const movie = await Movie.query().findById(200) //the movie already exists; but is not related to the actor
-await actor.$relatedQuery('movies').relate(movie) //now it is
+    const [actor] = await Person.query().where('firstName', 'Josefa')
+    const [movie] = await Movie.query().where(
+      'name',
+      'The Zé das Couves Supremacy'
+    )
+
+    const result = await actor.$relatedQuery('movies').relate(movie)
+    console.log(result)
+    const result2 = await actor
+      .$relatedQuery('movies')
+      .unrelate()
+      .where('name', 'The Zé das Couves Supremacy')
+    console.log(result2)
 ```
 
 The same can be done using the static method Model.relatedQuery() before QueryBuilder.relate():
 
 ```
-await Actor.relatedQuery('movies').for(100).relate(200)
+    const result = await Person.relatedQuery('movies').for(3).relate(2)
+    const result2 = await Person.relatedQuery('movies')
+      .for(3)
+      .unrelate()
+      .where('movies.id', 2)
+    console.log(result, result2)
 ```
 
 ## Eager Loading
@@ -757,11 +844,11 @@ await Actor.relatedQuery('movies').for(100).relate(200)
 If we wanted both a Person instance and their Pet instances, we'd do two queries:
 
 ```
-const person = await Person.query().where('id', 1)
+const [person] = await Person.query().where('firstName', 'Josefa')
 const pets = await person.$relatedQuery('pets')
 ```
 
-Now Objection offers some methods for us to do the same in one query, and have the pets as a property of person. They call it Eager Loading for fetching a "graph of relations". They "load the relations eagerly".
+Alternatively, Objection offers some methods for us to all of that in just one query, and have the pets as a property of person (as well as any other relation). They call it Eager Loading for fetching a "graph of relations". In other words, they "load the relations eagerly".
 
 The methods are QueryBuilder.withGraphFetched() and QueryBuilder.withGraphJoined(). While Model.relatedQuery() takes a relation name as its argument, QueryBuilder.withGraphFetched() and QueryBuilder.withGraphJoined() take a relation -expression-.
 
@@ -776,7 +863,7 @@ withGraphJoined does multiple joins and then performs one single query over the 
 withGraphFetched is the recommended choice.
 
 ```
-const person = await Person.query().where('id', 1).withGraphFetched('pets')
+const [person] = await Person.query().where('id', 1).withGraphFetched('pets')
 console.log(person.pets[0].name)
 ```
 
@@ -902,7 +989,7 @@ await Person.query().insertGraph({
 })
 ```
 
-In order to reference the same model in multiple places of the graph, we can use the special properties #id and #ref. Also, a second artgument must be passed to insertGraph: an object with property allowRefs true.
+In order to reference the same model in multiple places of the graph, we can use the special properties #id and #ref. Also, a second argument must be passed to insertGraph: an object with property allowRefs true.
 
 ```
   await Person.query().insertGraph(
@@ -1005,6 +1092,7 @@ await User.query().whereIn('id', [7, 8]).debug()
 const a = await User.query().findOne('login', '=', 'admin')
 const b = await User.query().where('login', '=', 'admin').first()
 const c = await User.query().where('login', '=', 'admin') //control. returns an array of one element, so we'll have to use c[0] later
+// or do destructuring assignment: const [c] = await User.query().where('login', '=', 'admin')
 ```
 
 QueryBuilder.alias(alias) aliases the table used in the query
@@ -1224,3 +1312,49 @@ Model.$appendRelated(relation, relatedModels)
 ```
 
 `instance.$fetchGraph(expression)` is a shortcut for `Model.fetchGraph(instance, expression)`
+
+```
+   const [actor] = await Person.query().where('firstName', 'Josefa')
+    console.log(actor)
+    /*
+    Person {
+      id: 3,
+      parentId: null,
+      firstName: 'Josefa',
+      lastName: 'Josefina',
+      age: null
+    }
+    */
+    await Person.fetchGraph(actor, 'movies')
+    console.log(actor)
+    /*
+    Person {
+      id: 3,
+      parentId: null,
+      firstName: 'Josefa',
+      lastName: 'Josefina',
+      age: null,
+      movies: [
+        Movie { id: 1, name: 'The Zé das Couves Identity', role: 'Spy' },
+        Movie { id: 3, name: 'The Zé das Couves Ultimatum', role: 'Spy' }
+      ]
+    }
+    */
+    const [sameActor] = await Person.query()
+      .where('firstName', 'Josefa')
+      .withGraphFetched('movies')
+    console.log(sameActor)
+    /*
+    Person {
+      id: 3,
+      parentId: null,
+      firstName: 'Josefa',
+      lastName: 'Josefina',
+      age: null,
+      movies: [
+        Movie { id: 1, name: 'The Zé das Couves Identity', role: 'Spy' },
+        Movie { id: 3, name: 'The Zé das Couves Ultimatum', role: 'Spy' }
+      ]
+    }
+    */
+```

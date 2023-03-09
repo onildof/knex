@@ -17,6 +17,7 @@ class Movie extends Model {
           through: {
             from: 'persons_movies.movieId',
             to: 'persons_movies.personId',
+            extra: ['role'],
           },
           to: 'persons.id',
         },

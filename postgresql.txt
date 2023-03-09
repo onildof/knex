@@ -1,0 +1,687 @@
+HISTORY
+
+PostgreSQL is an ORDBMS based on POSTGRES, a database research project from the University of California at Berkeley, which began in 1986 with funding from DARPA and others.
+
+That project pioneered many concepts that only became available commercially much later and ended in the mid 90's with POSTGRES 4.2.
+
+Postgres95 came out right after as an open-source descendant of POSTGRES. Among other changes, it had its PostQUEL query language replaced with SQL. One year later the name changed to PostgreSQL.
+
+Today, "Postgres" is an accepted alias/nickname for PostgreSQL. It supports a large part of the SQL standard and adds features. Also, it can be extended by the user in many ways. Its license is extremely promiscuous.
+
+PART I. Tutorial
+
+CHAPTER 1 Getting Started
+
+Architectural Fundamentals
+
+PostgreSQL uses a client/server model. A PostgreSQL session consists of the following cooperating processes:
+- A server process, which is called 'postgres' (all lowercase)
+- The user's client application
+
+The 'postgres' server can handle multiple concurrent connections from clients. To achieve this, it starts ("forks") a new process for each connection. From that point on, the client and the new server process communicate without intervention from the original 'postgres' process. That's why the original 'postgres' process is called the 'supervisor server process' - it's always running. What comes and goes are the client and associated server processes.
+
+Creating a database
+
+$ createdb mydb
+$ dropdb mydb
+
+PostgreSQL user names are separate from operating system user accounts. When you connect to a database, you can choose what PostgreSQL user name to connect as; if you don't, it will default to the same name as your current operating system account. As it happens, there will always be a PostgreSQL user account that has the same name as the operating system user that started the server, and it also happens that that user always has permission to create databases. Instead of logging in as that user you can also specify the -U option everywhere to select a PostgreSQL user name to connect as.
+
+Accessing a database
+
+There's a PostgreSQL terminal interface called 'psql', which allows us to enter SQL commands. A popular alternative is the graphical frontend tool pgAdmin.
+
+$ psql mydb
+
+If we do not supply the database name then it will default to our user account name. Same scheme as with using createdb.
+
+We'll be greeted by this:
+
+psql (15.2)
+Type "help" for help.
+
+mydb=>
+
+Now test some commands:
+
+mydb=> SELECT version();
+
+mydb=> SELECT current_date;
+
+The psql program has a number of internal commands which are not SQL. They all begin with the backslash character '\'.
+
+For help:
+mydb=> \h
+
+To quit psql:
+mydb=> \q
+
+CHAPTER 2 The SQL language
+
+C:\Program Files\PostgreSQL\15\bin> ./psql -U postgres
+123
+\i 'C:/Users/Spy/Documents/postgresbasics.sql'
+
+Be aware that some PostgreSQL features are extensions to the SQL standard.
+
+Tables are grouped into databases, and a collection of databases managed by a single PostgreSQL server instance constitutes a database cluster.
+
+Create a table by specifying its name, the name of its columns and their types:
+
+CREATE TABLE weather (
+    city            varchar(80),
+    temp_lo         int,           -- low temperature
+    temp_hi         int,           -- high temperature
+    prcp            real,          -- precipitation
+    date            date
+);
+
+CREATE TABLE cities (
+    name            varchar(80),
+    location        point
+);
+
+psql will recognize that the command is not terminated until the semicolon. Two dashes '--' introduce comments.
+
+SQL is case insensitive about identifiers, unless you double-quote them.
+
+INSERT INTO weather (city, temp_lo, temp_hi, prcp, date)
+    VALUES ('San Francisco', 43, 57, 0.0, '1994-11-29');
+
+There's a COPY command for loading data from a file:
+
+COPY weather FROM '/home/user/weather.txt';
+
+To retrieve data from a table, the table is queried by a SQL SELECT STATEMENT, with three parts:
+- select list
+- table list
+- qualification (optional)
+
+'*' is a shorthand for all columns.
+
+Besides column references, the select list also accepts expressions:
+
+SELECT city, (temp_hi+temp_lo)/2 AS temp_avg, date FROM weather;
+
+The AS CLAUSE is used to label the output column.
+
+The WHERE CLAUSE determines the qualification.
+
+DISTINCT removes duplicate rows from the result.
+DISTINCT and ORDER BY are frequently used together.
+
+While SELECT * is useful for off-the-cuff queries, it is widely considered bad style in production code, since adding a column to the table would change the results.
+
+Thus far, our queries have only accessed one table at a time. Queries can access multiple tables at once, or access the same table in such a way that multiple rows of the table are being processed at the same time. Queries that access multiple tables (or multiple instances of the same table) at one time are called join queries. They combine rows from one table with rows from a second table, with an expression specifying which rows are to be paired.
+
+For example, to return all the weather records together with the location of the associated city, the database needs to compare the city column of each row of the weather table with the name column of all rows in the cities table, and select the pairs of rows where these values match:
+
+SELECT * FROM weather JOIN cities ON city = name;
+
+     city      | temp_lo | temp_hi | prcp |    date    |     name      | location
+---------------+---------+---------+------+------------+---------------+-----------
+ San Francisco |      46 |      50 | 0.25 | 1994-11-27 | San Francisco | (-194,53)
+ San Francisco |      43 |      57 |    0 | 1994-11-29 | San Francisco | (-194,53)
+(2 rows)
+
+In a join you will probably want to list the output columns explicitly rather than using *, to avoid repeating the columns used in the ON qualifier of the JOIN. If there were duplicate column names in the two tables you'd need to qualify the column names to show which one you meant:
+
+SELECT weather.city, weather.temp_lo, weather.temp_hi,
+       weather.prcp, weather.date, cities.location
+    FROM weather JOIN cities ON weather.city = cities.name;
+
+It is widely considered good style to qualify all column names in a join query, so that the query won't fail if a duplicate column name is later added to one of the tables.
+
+This is also a join query, with a syntax that pre-dates the JOIN/ON syntax:
+
+SELECT *
+    FROM weather, cities
+    WHERE city = name;
+
+The results from this older implicit syntax and the newer explicit JOIN/ON syntax are identical. The join condition is introduced by its own key word whereas previously the condition was mixed into the WHERE clause together with other conditions.
+
+So we have four kinds of joins:
+INNER JOIN (aka JOIN)
+LEFT OUTER JOIN
+RIGHT OUTER JOIN
+FULL OUTER JOIN
+
+We an also join a table against itself, which is called a self join. Suppose we wish to find all the weather records that are in the temperature range of other weather records. So we need to compare the temp_lo and temp_hi columns of each weather row to the temp_lo and temp_hi columns of all other weather rows:
+
+SELECT w1.city, w1.temp_lo AS low, w1.temp_hi AS high,
+       w2.city, w2.temp_lo AS low, w2.temp_hi AS high
+    FROM weather w1 JOIN weather w2
+        ON w1.temp_lo < w2.temp_lo AND w1.temp_hi > w2.temp_hi;
+
+     city      | low | high |     city      | low | high
+---------------+-----+------+---------------+-----+------
+ San Francisco |  43 |   57 | San Francisco |  46 |   50
+ Hayward       |  37 |   54 | San Francisco |  46 |   50
+(2 rows)
+
+PostgreSQL supports aggregate functions. An aggregate function computes a single result from multiple input rows. We have
+min()
+max()
+avg()
+count()
+sum()
+
+PostgreSQL is case insensitive, but the convention is to type these aggregate functions in lowercase.
+
+SELECT max(temp_lo) FROM weather;
+
+If we wanted to know what city (or cities) that reading occurred in, we might try:
+
+SELECT city FROM weather WHERE temp_lo = max(temp_lo);     --WRONG
+
+But that is wrong because the WHERE clause determines which rows will be used in the aggregate function. The same reasoning goes for the join syntax:
+SELECT w2.city
+FROM weather w1 JOIN weather w2 ON max(w1.temp_lo) = w2.temp_lo; --WRONG
+
+
+What to do when we can't use joins? Subqueries.
+
+SELECT *
+FROM weather JOIN (SELECT max(temp_lo) as max_lo FROM weather) subqueryalias
+  ON temp_lo = max_lo;
+
+Now when using aggregate functions, we sometimes want to run them through separate subsets of rows, not through the whole set. That's what the GROUP BY clause is for.
+
+For example, we can get the number of readings and the maximum low temperature observed in each city (meaning grouping the aggregate functions by city) with:
+
+SELECT city, count(*), max(temp_lo)
+FROM weather
+GROUP BY city;
+
+After grouping the rows, we might want to filter each group. That's what the HAVING clause is for.
+
+Say we want the same results, but for only the cities that have all temp_lo values below 40 (in other words, each city's max temp_lo should be below 40)
+
+SELECT city, count(*), max(temp_lo)
+FROM weather
+GROUP BY city HAVING max(temp_lo) < 40;
+
+If we only care about cities whose names begin with “S”, we might do:
+
+SELECT city, count(*), max(temp_lo)
+FROM weather WHERE city LIKE 'S%'
+GROUP BY city;
+
+In this case we can only use WHERE to filter the rows because a JOIN wouldn't make any sense.
+The LIKE operator does pattern matching.
+
+The fundamental difference between WHERE and HAVING:
+ON (from JOIN) and WHERE select rows before grouping.
+HAVING selects rows after grouping.
+
+Our HAVING clause will most likely always contain aggregate functions, although that's not mandatory.
+
+We could've done:
+
+SELECT city, count(*), max(temp_lo)
+FROM weather
+GROUP BY city HAVING city LIKE 'S%';
+
+But that would've been inefficient, because we'd be grouping rows that would be later removed anyway (possibly removing whole groups). And if our HAVING clause also did use aggregate functions, we'd run these on rows that'd be removed.
+
+There's an option for filtering rows per-aggregate:
+
+SELECT city, count(*) FILTER (WHERE temp_lo < 45), max(temp_lo)
+FROM weather
+GROUP BY city;
+
+FILTER removes rows from the input of its aggregate function. Here, the count aggregate function only counts rows with temp_lo below 45, while the max aggregate function is still applied to all rows.
+
+Updates and deletions:
+
+UPDATE weather
+    SET temp_hi = temp_hi - 2,  temp_lo = temp_lo - 2
+    WHERE date > '1994-11-28';
+
+DELETE FROM weather WHERE city = 'Hayward';
+
+Remember to always qualify the updates and deletions, or you'll affect all rows indiscriminately!
+
+CHAPTER 3 Advanced Features
+
+What if we're using this query repeatedly in other queries?
+
+SELECT name, temp_lo, temp_hi, prcp, date, location
+FROM weather JOIN cities ON city = name;
+
+There's no need to type it again and again. That's what views are for. We can create a named view for the results of that query.
+
+CREATE VIEW myview AS
+    SELECT name, temp_lo, temp_hi, prcp, date, location
+    FROM weather JOIN cities ON city = name;
+
+SELECT * FROM myview;
+
+Making liberal use of views is a key aspect of good SQL database design. Views can be used in almost any place a real table can be used. Building views upon other views is not uncommon.
+
+In order to avoid users from inserting rows in weather that do not have a corresponding row in cities (aka maintaining referential integrity of our data), we must make use of a foreign key and a primary key:
+
+CREATE TABLE cities (
+        name     varchar(80) primary key,
+        location point
+);
+
+CREATE TABLE weather (
+        city      varchar(80) references cities(name),
+        temp_lo   int,
+        temp_hi   int,
+        prcp      real,
+        date      date
+);
+
+INSERT INTO weather VALUES ('Berkeley', 45, 53, 0.0, '1994-11-28'); -- violates foreign key constraint "weather_city_fkey"
+
+Transactions are a fundamental aspect of all database systems. It bundles multiple steps into an all-or-nothing operation (that's what makes a transaction atomic from the point of view of other transactions). The intermediate states between steps are not visible to other concurrent transactions.
+
+A transactional database guarantees that all the updates made by a transaction are logged in permanent storage (i.e., on disk) before the transaction is reported complete.
+
+In PostgreSQL, a transaction is set up by surrounding the SQL commands of the transaction with BEGIN and COMMIT commands.
+
+BEGIN
+UPDATE accounts SET balance = balance - 100.00
+    WHERE name = 'Alice';
+UPDATE branches SET balance = balance - 100.00
+    WHERE name = (SELECT branch_name FROM accounts WHERE name = 'Alice');
+UPDATE accounts SET balance = balance + 100.00
+    WHERE name = 'Bob';
+UPDATE branches SET balance = balance + 100.00
+    WHERE name = (SELECT branch_name FROM accounts WHERE name = 'Bob');
+COMMIT
+
+If, partway through the transaction, we decide we do not want to commit (perhaps we just noticed that Alice's balance went negative), we can issue the command ROLLBACK instead of COMMIT, and all our updates so far will be canceled.
+
+PostgreSQL actually treats every SQL statement as being executed within a transaction. If you do not issue a BEGIN command, then each individual statement has an implicit BEGIN and (if successful) COMMIT wrapped around it. A group of statements surrounded by BEGIN and COMMIT is sometimes called a transaction block.
+
+It's possible to control the statements in a transaction in a more granular fashion through the use of savepoints. Savepoints allow you to selectively discard parts of the transaction, while committing the rest. After defining a savepoint with SAVEPOINT, you can if needed roll back to the savepoint with ROLLBACK TO. All the transaction's database changes between defining the savepoint and rolling back to it are discarded, but changes earlier than the savepoint are kept.
+
+Remembering the bank database, suppose we debit $100.00 from Alice's account, and credit Bob's account, only to find later that we should have credited Wally's account. We could do it using savepoints like this:
+
+BEGIN;
+UPDATE accounts SET balance = balance - 100.00
+    WHERE name = 'Alice';
+SAVEPOINT my_savepoint;
+UPDATE accounts SET balance = balance + 100.00
+    WHERE name = 'Bob';
+-- oops ... forget that and use Wally's account
+ROLLBACK TO my_savepoint;
+UPDATE accounts SET balance = balance + 100.00
+    WHERE name = 'Wally';
+COMMIT;
+
+There's a lot of control possible in a transaction block through the use of savepoints. Moreover, ROLLBACK TO is the only way to regain control of a transaction block that was put in aborted state by the system due to an error, short of rolling it back completely and starting again.
+
+A window function performs a calculation acress a set of rows that are somehow related to the current row.
+
+Here is an example that shows how to compare each employee's salary with the average salary in his or her department:
+
+CREATE TABLE empsalary (
+    depname text,
+    empno   int,
+    salary  int
+);
+
+INSERT INTO empsalary (depname, empno, salary) VALUES
+('develop', 11, 5200),
+('develop', 7, 4200),
+('develop', 9, 4500),
+('develop', 8, 6000),
+('develop', 10, 5200),
+('personnel',5 ,3500),
+('personnel',2 ,3900),
+('sales'    ,3 ,4800),
+('sales'    ,1 ,5000),
+('sales'    ,4 ,4800);
+
+SELECT e1.depname, empno, salary, avg 
+FROM empsalary e1 JOIN (SELECT depname, avg(salary) FROM empsalary GROUP BY depname) e2 ON e1.depname = e2.depname;
+
+  depname  | empno | salary |          avg
+-----------+-------+--------+-----------------------
+ develop   |    11 |   5200 | 5020.0000000000000000
+ develop   |     7 |   4200 | 5020.0000000000000000
+ develop   |     9 |   4500 | 5020.0000000000000000
+ develop   |     8 |   6000 | 5020.0000000000000000
+ develop   |    10 |   5200 | 5020.0000000000000000
+ personnel |     5 |   3500 | 3700.0000000000000000
+ personnel |     2 |   3900 | 3700.0000000000000000
+ sales     |     3 |   4800 | 4866.6666666666666667
+ sales     |     1 |   5000 | 4866.6666666666666667
+ sales     |     4 |   4800 | 4866.6666666666666667
+(10 rows)
+
+Now with a window function:
+
+SELECT depname, empno, salary, avg(salary) OVER (PARTITION BY depname) 
+FROM empsalary;
+
+  depname  | empno | salary |          avg
+-----------+-------+--------+-----------------------
+ develop   |    11 |   5200 | 5020.0000000000000000
+ develop   |     7 |   4200 | 5020.0000000000000000
+ develop   |     9 |   4500 | 5020.0000000000000000
+ develop   |     8 |   6000 | 5020.0000000000000000
+ develop   |    10 |   5200 | 5020.0000000000000000
+ personnel |     5 |   3500 | 3700.0000000000000000
+ personnel |     2 |   3900 | 3700.0000000000000000
+ sales     |     3 |   4800 | 4866.6666666666666667
+ sales     |     1 |   5000 | 4866.6666666666666667
+ sales     |     4 |   4800 | 4866.6666666666666667
+(10 rows)
+
+Same exact result.
+
+The fourth column in this query represents an average taken across all the table rows that have the same depname value as the current row. (This actually is the same function as the non-window avg aggregate, but the OVER clause causes it to be treated as a window function and computed across the window frame.)
+
+So the OVER clause turns an aggregate function into a window aggregate function.
+The PARTITION BY clause within OVER divides the rows into groups (here called 'partitions').
+
+Now let's take a look at the rank() function:
+
+SELECT depname, empno, salary,
+    rank() OVER (PARTITION BY depname ORDER BY salary DESC)
+FROM empsalary;
+
+The rank() function produces a numerical rank for each distinct ORDER BY value in the current row's partition, using the order defined by the ORDER BY clause within OVER. rank() needs no parameter because its behavior is entirely determined by the OVER clause.
+
+The rows considered by a window function are those of the “virtual table” produced by the query's FROM clause as filtered by its WHERE, GROUP BY, and HAVING clauses. A query can contain multiple window functions that slice up the data in different ways using different OVER clauses, but they all act on the same collection of rows defined by this virtual table.
+
+We already saw that ORDER BY can be omitted if the ordering of rows is not important. It is also possible to omit PARTITION BY, in which case there is a single partition containing all rows.
+
+So each row has a corresponding partition. Within that partition there's a window. Some window functions act just on the window. Other window functions act on the whole partition. By default, ORDER BY is supplied when the frame consists of all rows from the start of the partition up to the current row, plus any following rows that are equal to the current row according to the ORDER BY clause. When ORDER BY is omitted, the default frame consists of all rows in the partition.
+
+Here's an example using sum():
+
+SELECT salary, sum(salary) OVER () FROM empsalary;
+
+ salary |  sum
+--------+-------
+   5200 | 47100
+   4200 | 47100
+   4500 | 47100
+   6000 | 47100
+   5200 | 47100
+   3500 | 47100
+   3900 | 47100
+   4800 | 47100
+   5000 | 47100
+   4800 | 47100
+(10 rows)
+
+As opposed to using a subquery:
+
+SELECT salary, (SELECT sum(salary) FROM empsalary)
+FROM empsalary;
+
+ salary |  sum
+--------+-------
+   5200 | 47100
+   4200 | 47100
+   4500 | 47100
+   6000 | 47100
+   5200 | 47100
+   3500 | 47100
+   3900 | 47100
+   4800 | 47100
+   5000 | 47100
+   4800 | 47100
+(10 rows)
+
+As there is no ORDER BY in the OVER clause, the window frame is the same as the partition, which for lack of a PARTITION BY clause is the whole table; in other words each sum is taken over the whole table and so we get the same result for each output row.
+
+If we add an ORDER BY clause, we get very different results.
+
+SELECT salary, sum(salary) OVER (ORDER BY salary ASC) FROM empsalary;
+
+ salary |  sum
+--------+-------
+   3500 |  3500
+   3900 |  7400
+   4200 | 11600
+   4500 | 16100
+   4800 | 25700
+   4800 | 25700
+   5000 | 30700
+   5200 | 41100
+   5200 | 41100
+   6000 | 47100
+(10 rows)
+
+Here the sum is taken from the first (lowest) salary up through the current one, including any duplicates of the current one.
+
+Window functions are permitted only in the SELECT list and the ORDER BY clause of the query. They are forbidden elsewhere, such as in GROUP BY, HAVING and WHERE clauses. This is because they logically execute after the processing of those clauses. Also, window functions execute after non-window aggregate functions. This means it is valid to include an aggregate function call in the arguments of a window function, but not vice versa.
+
+If there is a need to filter or group rows after the window calculations are performed, you can use a sub-select. For example:
+
+SELECT depname, empno, salary, pos
+FROM
+  (SELECT depname, empno, salary,
+          rank() OVER (PARTITION BY depname ORDER BY salary DESC, empno ASC) AS pos
+     FROM empsalary
+  ) AS ss
+WHERE pos < 3;
+
+The above query only shows the rows from the inner query having rank less than 3.
+
+When a query involves multiple window functions, it is possible to write out each one with a separate OVER clause, but this is duplicative and error-prone if the same windowing behavior is wanted for several functions. Instead, each windowing behavior can be named in a WINDOW clause and then referenced in OVER. For example:
+
+SELECT depname, empno, salary, sum(salary) OVER w, avg(salary) OVER w
+  FROM empsalary
+  WINDOW w AS (PARTITION BY depname ORDER BY salary DESC);
+
+Inheritance is a concept from object-oriented databases.
+
+Say we create two tables: cities and capitals. Capitals are also cities, so we want a way to show the capitals implicitly when we list all cities. We might do this using a VIEW for a UNION of two queries:
+
+CREATE TABLE capitals (
+  name       text,
+  population real,
+  elevation  int,    -- (in ft)
+  state      char(2)
+);
+
+CREATE TABLE non_capitals (
+  name       text,
+  population real,
+  elevation  int     -- (in ft)
+);
+
+CREATE VIEW cities AS
+  SELECT name, population, elevation FROM capitals
+    UNION
+  SELECT name, population, elevation FROM non_capitals;
+
+A better solution is inheritance:
+
+CREATE TABLE cities (
+  name       text,
+  population real,
+  elevation  int     -- (in ft)
+);
+
+CREATE TABLE capitals (
+  state      char(2) UNIQUE NOT NULL
+) INHERITS (cities);
+
+To find the names of all cities, including state capitals, that are located at an elevation over 500 feet:
+
+SELECT name, elevation
+FROM cities WHERE elevation > 500;
+
+   name    | elevation
+-----------+-----------
+ Las Vegas |      2174
+ Mariposa  |      1953
+ Madison   |       845
+(3 rows)
+
+Madison is the capital of Wisconsin.
+
+And if we want cities that are not capitals:
+
+SELECT name, elevation
+FROM ONLY cities WHERE elevation > 500;
+
+   name    | elevation
+-----------+-----------
+ Las Vegas |      2174
+ Mariposa  |      1953
+(2 rows)
+
+Here the ONLY before cities indicates that the query should be run over only the cities table, and not tables below cities in the inheritance hierarchy. Many of the commands that we have already discussed — SELECT, UPDATE, and DELETE — support this ONLY notation.
+
+This ends PART I.
+
+PART II. The SQL language
+
+CHAPTER 4 SQL syntax
+
+4.1 Lexical Structure
+
+PostgreSQL identifiers and keywords must begin with a letter (a-z) or an underscore (_). Subsequent characters can also be digits (0-9) and dollar signs ($), although the SQL standard does not allow dollar signs in identifiers.
+
+The SQL standard does not define a keyword that contains digits or starts or ends with an underscore, so identifiers of this form are safe against possible conflict with future extensions of the standard.
+
+The maximum identifier length is NAMEDATALEN-1, which is a constant in src/include/pg_config_manual.h, 63 bytes by default.
+
+Keywords and unquoted identifiers (aka names) are case insensitive.
+
+A convention is to write keywords in uppercase and names in lowercase:
+
+UPDATE my_table SET a = 5;
+
+There is a second kind of identifier: quoted identifier (which is actually double-quoted). It is also called delimited identifier. A delimited identifier will never be parsed as a keyword, so we can for instance name a table "select". Delimited/quoted identifiers can have any characters, including spaces. The length limitation still applies. A delimited identifier is now case sensitive.
+
+FOO, foo and "foo" are considered the same. "Foo" and "FOO" are different from these.
+
+In contrast with delimited identifiers, which are defined by double quotes, a string constant is defined by single quotes:
+
+'Horse'
+'Diana''s Horse' --write a single quote twice to include it as an actual single-quote character within the string constant
+
+There's a quirk of the SQL standard where single-quoted constants separated by whitespace with at least one newline are actually effectively concatenated and treated as a single string constant.
+
+SELECT 'foo'
+'bar';
+
+is equivalent to
+
+SELECT 'foobar';
+
+and different from 
+
+SELECT 'foo' 'bar'; --which is invalid syntax
+
+There's a special kind of string constant, which accepts C-style escapes. Before the first single-quote we must put a capital E:
+
+E'foo'
+
+When continuing accross different lines, don't put an E on each line.
+
+SELECT E'foo'
+'bar';
+
+Backslash Escape Sequence	        Interpretation
+\b	                                backspace
+\f	                                form feed
+\n	                                newline
+\r	                                carriage return
+\t	                                tab
+\o, \oo, \ooo (o = 0–7)	            octal byte value
+\xh, \xhh (h = 0–9, A–F)	        hexadecimal byte value
+\uxxxx, \Uxxxxxxxx (x = 0–9, A–F)	16 or 32-bit hexadecimal Unicode character value
+
+postgres=# SELECT E'bar\nfox';
+ ?column?
+----------
+ bar     +
+ fox
+(1 row)
+
+
+postgres=# SELECT 'bar\nfox';
+ ?column?
+----------
+ bar\nfox
+(1 row)
+
+C-style escape characters are not parsed in regular single-quoted string constants.
+
+To include a backlash character, repeat it. Also '\'' becomes an alternative to ''''
+
+postgres=# SELECT E'a\'b';
+ ?column?
+----------
+ a'b
+(1 row)
+
+postgres=# SELECT 'a\'b';               --the second ' is parsed as the actual end of the string, so 'a\'
+postgres'# ';                           --then what's left is b';, which is nonsense and a syntax error
+ERROR:  syntax error at or near "b';
+'"
+LINE 1: SELECT 'a\'b';
+
+postgres=# SELECT E'a''b';
+ ?column?
+----------
+ a'b
+(1 row)
+
+postgres=# SELECT 'a''b';
+ ?column?
+----------
+ a'b
+(1 row)
+
+postgres=# SELECT E'a\\b';
+ ?column?
+----------
+ a\b
+(1 row)
+
+postgres=# SELECT 'a\\b';
+ ?column?
+----------
+ a\\b
+(1 row)
+
+We'll skip over dollar-quoted string constants and bit-string constants.
+
+Numeric Constants: At least one digit must be before or after the decimal point, if one is used. At least one digit must follow the exponent marker (e), if one is present. Any leading plus or minus sign is not actually considered part of the constant; it is an operator applied to the constant.
+
+42
+3.5
+4.
+.001
+5e2
+1.925e-3
+
+A numeric constant that contains neither a decimal point nor an exponent is initially presumed to be type integer if its value fits in type integer (32 bits); otherwise it is presumed to be type bigint if its value fits in type bigint (64 bits); otherwise it is taken to be type numeric. Constants that contain decimal points and/or exponents are always initially presumed to be type numeric.~
+
+The best casting syntaxes are:
+
+'string'::type              -- this is historical PostgreSQL usage
+CAST ( 'string' AS type )   -- this conforms to the SQL standard
+
+The text is passed to the input conversion routine for the type called type. When assigned to a table column, no exclicit casting is needed.
+
+The asterisk (*) is necessary for calling a parameterless aggregate function:
+
+postgres=# SELECT count() FROM weather;
+ERROR:  count(*) must be used to call a parameterless aggregate function
+LINE 1: SELECT count() FROM weather;
+               ^
+
+C-style block comments are a thing:
+
+/* multiline comment
+ * with nesting: /* nested block comment, possible in PostgreSQL, unlike C */
+ */
+
+We'll skip over operator precedence and associativity.
+
+4.2 Value Expressions

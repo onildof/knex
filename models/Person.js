@@ -5,7 +5,7 @@ class Person extends Model {
     return 'persons'
   }
 
-  static get relationMappgins() {
+  static get relationMappings() {
     const Animal = require('./Animal')
     const Movie = require('./Movie')
 
@@ -45,6 +45,7 @@ class Person extends Model {
           through: {
             from: 'persons_movies.personId',
             to: 'persons_movies.movieId',
+            extra: ['role'],
           },
           to: 'movies.id',
         },
